@@ -26,6 +26,9 @@ function createWindow(url) {
   win.webContents.on("did-finish-load", () => {
     win.webContents.insertCSS(HIDE_SCROLLBAR_CSS);
   });
+  if (process.env.KIOSK_DEVTOOLS) {
+    win.webContents.openDevTools({ mode: "detach" });
+  }
   win.loadURL(url);
 }
 
