@@ -87,7 +87,7 @@ def save(path, root):
         f.write(data)
 
 
-def add_shortcut(vdf_path, *, appname, exe, start_dir, icon, launch_options, tags=None):
+def add_shortcut(vdf_path, *, appname, exe, start_dir, icon, launch_options, tags=None, allow_overlay=True):
     """Add or update (by appname) a non-Steam shortcut entry. Returns the
     generated appid. Backs up any existing shortcuts.vdf to .bak first."""
     root = load(vdf_path)
@@ -104,7 +104,7 @@ def add_shortcut(vdf_path, *, appname, exe, start_dir, icon, launch_options, tag
         "LaunchOptions": launch_options,
         "IsHidden": 0,
         "AllowDesktopConfig": 1,
-        "AllowOverlay": 1,
+        "AllowOverlay": 1 if allow_overlay else 0,
         "OpenVR": 0,
         "Devkit": 0,
         "DevkitGameID": "",

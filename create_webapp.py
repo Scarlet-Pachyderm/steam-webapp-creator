@@ -123,6 +123,7 @@ def register_steam_shortcut(name, url, asset_paths, user_id=None):
         start_dir=KIOSK_LAUNCHER_DIR + "/",
         icon=icon_dest or "",
         launch_options=f". {url}",
+        allow_overlay=False,
     )
     assert written_appid == appid
     print(f"\nAdded/updated Steam shortcut '{name}' (appid {appid}) in {vdf_path}")
