@@ -11,18 +11,15 @@ function targetUrl() {
 
 const HIDE_SCROLLBAR_CSS = "::-webkit-scrollbar { width: 0 !important; height: 0 !important; }";
 
-// Disney+ (and some other services) block DRM playback on a Linux user
-// agent even with a real, valid Widevine CDM -- spoofing Windows is a
-// well-known workaround that real Linux browser users also rely on.
-const WINDOWS_UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome} Safari/537.36`;
-
 function createWindow(url) {
   const win = new BrowserWindow({
     fullscreen: true,
     frame: false,
     autoHideMenuBar: true,
+    webPreferences: {
+      sandbox: false,
+    },
   });
-  win.webContents.setUserAgent(WINDOWS_UA);
   win.webContents.on("did-finish-load", () => {
     win.webContents.insertCSS(HIDE_SCROLLBAR_CSS);
   });
