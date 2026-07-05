@@ -115,7 +115,14 @@ def register_steam_shortcut(name, url, asset_paths, user_id=None):
     profile_dir = os.path.join(EDGE_PROFILES_DIR, slugify(name))
     os.makedirs(profile_dir, exist_ok=True)
 
-    edge_args = [edge_exe, *edge_prefix_args, f"--app={url}", "--start-fullscreen", f"--user-data-dir={profile_dir}"]
+    edge_args = [
+        edge_exe,
+        *edge_prefix_args,
+        f"--app={url}",
+        "--start-fullscreen",
+        "--hide-scrollbars",
+        f"--user-data-dir={profile_dir}",
+    ]
 
     vdf_path = os.path.join(userdata_dir, "config", "shortcuts.vdf")
     written_appid = shortcuts_vdf.add_shortcut(
