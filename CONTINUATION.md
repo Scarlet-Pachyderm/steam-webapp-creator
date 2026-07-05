@@ -183,16 +183,46 @@ user IDs.
   Steam feature (works on any non-Steam shortcut), not something the app
   renders itself — quality depends on how keyboard-navigable the actual
   site is.
-- Wrap the CLI logic in a GTK4/libadwaita UI.
-- **SGDB API key distribution** (decision made, not yet implemented):
-  the shipped app must have each user supply their own free SGDB key via
-  a settings screen (stored locally), not embed the developer's key.
-  SGDB's terms expect per-user keys; a key baked into a distributed app
-  would get rate-limited across installs and risks revocation, breaking
-  the app for everyone. The current `.env` (gitignored, recreated per
-  dev machine) is only a stand-in for this until the UI exists.
-- Flatpak manifest (x86_64 + aarch64), needs broad filesystem permission
-  to reach Steam's userdata dir outside the sandbox.
+- **Wrap the CLI logic in a GTK4/libadwaita UI**, with a first-run
+  onboarding flow covering the two one-time setup steps below (the actual
+  per-shortcut flow — type URL, confirm SGDB match, create shortcut —
+  doesn't need to touch either again afterward):
+  1. **Check for Edge, offer to install if missing.**
+     `edge_launcher.find_edge()` already does the detection (native
+     binary names first, then the Flatpak). If not found, show a button
+     that installs the Flathub package via
+     `flatpak-spawn --host flatpak install flathub com.microsoft.Edge`
+     — confirmed this is a legitimate, established pattern by checking
+     two real installed apps that do the same thing (Bazaar, an app
+     store; Warehouse, a Flatpak manager): both request
+     `--talk-name=org.freedesktop.Flatpak` in their manifest's
+     finish-args (shows as `org.freedesktop.Flatpak=talk` under Session
+     Bus Policy) to get `flatpak-spawn --host` access. `flatpak install`
+     run this way still shows its own confirmation dialog on the host
+     side by default, so nothing installs silently. This is one more
+     privileged manifest permission on top of the Steam userdata
+     filesystem access we already need — Flathub reviewers do scrutinize
+     it, though it's an accepted pattern for apps like this.
+  2. **SGDB API key input.** A settings field where the user pastes their
+     own free key (from steamgriddb.com/profile/preferences/api), stored
+     locally in the app's own data dir, never committed or shared.
+     SGDB's terms expect per-user keys; a key baked into a distributed
+     app would get rate-limited across installs and risks revocation,
+     breaking the app for everyone. Checked how
+     [Steam ROM Manager](https://github.com/SteamGridDB/steam-rom-manager)
+     (an official first-party SteamGridDB tool) handles this for
+     comparison: `src/lib/image-providers/api-key.ts` just hardcodes a
+     single shared key, with their own `// TODO make the user input this`
+     comment admitting it's a stopgap. They can get away with it only
+     because they're the platform's own team and control both sides if
+     that key ever gets rate-limited/abused — not a position a
+     third-party app is in, so this doesn't change our decision, if
+     anything it reinforces it. The current `.env` (gitignored, recreated
+     per dev machine) is only a stand-in for this until the UI exists.
+- Flatpak manifest (x86_64 only), needs broad filesystem permission to
+  reach Steam's userdata dir outside the sandbox, plus
+  `--talk-name=org.freedesktop.Flatpak` for the Edge-install button
+  above.
 - Flathub submission.
 
 ## Constraints to keep in mind
