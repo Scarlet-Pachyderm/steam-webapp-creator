@@ -113,17 +113,33 @@ user IDs.
 
 ## Later stages (not started)
 
-- Kiosk-mode browser launch (`chromium --app=<url>` or similar) as the
-  shortcut's actual `Exec` target. Prefer Chromium-based browsers —
-  Netflix/Disney+ need Widevine DRM, which vanilla Firefox doesn't
-  support well. (Dev machine only has Zen/Firefox installed, no
-  Chromium — another reason x86 testing matters.)
+- **Kiosk-mode browser launch** (decision made, not yet implemented):
+  shell out to an installed Chromium-based browser with `--app=<url>`
+  (borderless window) as the shortcut's `Exec` target — do **not**
+  embed a browser engine in the app. Reasoning: bundling Chromium/CEF
+  adds 150-300MB to the Flatpak and still needs the proprietary
+  Widevine CDM, which is awkward to distribute via Flathub. WebKitGTK
+  (the GTK-native embeddable option) doesn't support Widevine well
+  either, so it's out for DRM'd streaming sites regardless. Accepted
+  tradeoff: users need a Chromium-based browser already installed
+  (Chrome, Chromium, Brave, Edge, ...) — vanilla Firefox's Widevine
+  support isn't reliable enough to depend on. The app should probably
+  detect if none is present and offer to `flatpak install` one rather
+  than fail silently. (Dev machine only has Zen/Firefox installed, no
+  Chromium — another reason to test this on x86 / the Deck.)
 - Steam Input controller config bundling (dpad → Tab/Arrows, A → Enter,
   B → Escape) so sites are navigable without a mouse/keyboard. This is a
   Steam feature (works on any non-Steam shortcut), not something the app
   renders itself — quality depends on how keyboard-navigable the actual
   site is.
 - Wrap the CLI logic in a GTK4/libadwaita UI.
+- **SGDB API key distribution** (decision made, not yet implemented):
+  the shipped app must have each user supply their own free SGDB key via
+  a settings screen (stored locally), not embed the developer's key.
+  SGDB's terms expect per-user keys; a key baked into a distributed app
+  would get rate-limited across installs and risks revocation, breaking
+  the app for everyone. The current `.env` (gitignored, recreated per
+  dev machine) is only a stand-in for this until the UI exists.
 - Flatpak manifest (x86_64 + aarch64), needs broad filesystem permission
   to reach Steam's userdata dir outside the sandbox.
 - Flathub submission.
