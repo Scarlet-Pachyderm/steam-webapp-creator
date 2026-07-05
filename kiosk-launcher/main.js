@@ -1,5 +1,10 @@
 const { app, components, BrowserWindow } = require("electron");
 
+// Chromium's process-level sandbox needs Linux user-namespace permissions
+// that aren't reliably available when launched from Steam's Gamescope
+// Game Mode session (as opposed to a normal desktop session).
+app.commandLine.appendSwitch("no-sandbox");
+
 function targetUrl() {
   const arg = process.argv.slice(1).find((a) => /^https?:\/\//.test(a));
   if (!arg) {
