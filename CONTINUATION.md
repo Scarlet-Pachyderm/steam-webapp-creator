@@ -139,11 +139,61 @@ user IDs.
   - Dev-signed builds (the default, no castLabs EVS subscription) may cap
     playback quality similarly to how Linux browsers already cap Netflix
     at ~720p without hardware-backed Widevine L1 — expected to be a wash
-    against the browser-based approach, not a regression, but not yet
-    verified against real playback.
+    against the browser-based approach, not a regression.
   - ~~Original plan: shell out to an installed Chromium-based browser with
     `--app=<url>`, avoid embedding a browser engine at all, accept that
     users need Brave/Chrome/Edge already installed.~~
+  - **CONFIRMED WORKING on real hardware** (x86_64 desktop with Steam as
+    Flatpak, and a real Steam Deck), after working through several
+    real-world gotchas:
+    - `npm install` alone doesn't trigger the platform binary download in
+      this castLabs fork on a fresh machine — had to manually run
+      `node node_modules/electron/install.js` once to force it.
+    - Fresh Fedora toolbox containers are missing several Chromium
+      runtime shared libs by default: `nspr`, `nss`, and the full GTK3
+      stack (`gtk3`, `libXcomposite`, `libXcursor`, `libXdamage`,
+      `libXext`, `libXfixes`, `libXrandr`, `libXScrnSaver`,
+      `libxshmfence`, `pango`, `cairo`). Install these via `dnf` in
+      whatever distrobox/toolbox container runs the launcher.
+    - If Widevine CDM install fails ("Failed to install required
+      components"), check whether an ad/DNS blocker (AdGuard Home, etc.)
+      is blocking Google's component-update domains
+      (`update.googleapis.com`, `dl.google.com`, `edgedl.me.gvt1.com`,
+      `www.google.com`) — this was the actual cause once, not a real
+      Electron/Widevine bug.
+    - **VMP/EVS signing does NOT apply on Linux at all** — the Linux
+      Widevine CDM doesn't support or require VMP, so castLabs' free
+      dev-signed build works exactly the same as a paid EVS-signed one
+      here. (VMP/EVS only matters for Windows/Mac.) Don't waste time
+      chasing an EVS signup for Linux-only playback issues.
+    - Don't spoof a Windows user agent — found
+      [quark-player](https://github.com/Alex313031/quark-player), an
+      existing Electron app supporting Disney+/Netflix on this same
+      castLabs fork, and its per-service config uses the natural
+      Electron/Chromium Linux UA for both, no spoofing. Also matched its
+      `webPreferences: { sandbox: false }`.
+    - A real early blocker was **"Could not determine privacy consent
+      status before playback"** — a fresh Electron profile has never
+      seen Disney+'s cookie-consent prompt, so the site can't confirm a
+      decision and refuses to play anything until you explicitly click
+      Accept (not Reject) on it once per profile/userData directory.
+      Rejecting cookies (a reasonable default habit) reproduces this
+      same failure.
+    - **Remaining known limitation, not fixable client-side: no Dolby
+      Digital Plus/Atmos audio decoding.** Microsoft Edge has a direct
+      Dolby licensing deal baked into its binary on every platform it
+      ships; Google never licensed Dolby codecs into open-source
+      Chromium, so no other Chromium derivative (this app included) can
+      decode EC-3/Atmos audio. Titles that only publish a Dolby audio
+      track (typical for big-budget content) will fail with an audio
+      decoder error (`DECODER_ERROR_NOT_SUPPORTED` /
+      `kUnsupportedConfig`); titles mastered in plain stereo/AAC (older
+      or lower-tier catalog content, e.g. confirmed working: Golden
+      Girls) play fine. There is no reliable client-side way to force a
+      stereo fallback — it depends on whether that title's manifest even
+      has a non-Dolby rendition published, which the client can't
+      influence. Accepted as an inherent limitation of not having Dolby
+      licensing, not something worth continuing to chase.
 - Steam Input controller config bundling (dpad → Tab/Arrows, A → Enter,
   B → Escape) so sites are navigable without a mouse/keyboard. This is a
   Steam feature (works on any non-Steam shortcut), not something the app
