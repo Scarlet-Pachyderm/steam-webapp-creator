@@ -88,8 +88,16 @@ def save(path, root):
 
 
 def add_shortcut(vdf_path, *, appname, exe, start_dir, icon, launch_options, tags=None, allow_overlay=True):
-    """Add or update (by appname) a non-Steam shortcut entry. Returns the
-    generated appid. Backs up any existing shortcuts.vdf to .bak first."""
+    """Add or update (by appname) a non-Steam shortcut entry. Removes any
+    other entries this tool previously created under the same appname
+    (matched on the lowercase 'appname' key this tool writes, so a
+    user's own manually-added Steam shortcuts using Steam's native
+    'AppName' casing are left untouched) -- the appid changes whenever
+    exe changes (e.g. across a code update), which otherwise leaves
+    orphaned stale entries behind instead of updating in place. Returns
+    (new_appid, [old_appids_removed]) so callers can clean up the
+    matching stale grid asset files too. Backs up any existing
+    shortcuts.vdf to .bak first."""
     root = load(vdf_path)
     shortcuts = root.setdefault("shortcuts", {})
 
@@ -114,9 +122,13 @@ def add_shortcut(vdf_path, *, appname, exe, start_dir, icon, launch_options, tag
         "tags": {str(i): t for i, t in enumerate(tags or [])},
     }
 
-    existing_key = next((k for k, v in shortcuts.items() if v.get("appname") == appname), None)
-    key = existing_key if existing_key is not None else str(len(shortcuts))
+    stale_keys = [k for k, v in shortcuts.items() if v.get("appname") == appname]
+    removed_appids = [shortcuts[k]["appid"] for k in stale_keys if shortcuts[k]["appid"] != appid]
+    for k in stale_keys:
+        del shortcuts[k]
+
+    key = stale_keys[0] if stale_keys else str(len(shortcuts))
     shortcuts[key] = entry
 
     save(vdf_path, root)
-    return appid
+    return appid, removed_appids

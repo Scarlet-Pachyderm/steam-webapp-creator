@@ -125,7 +125,7 @@ def register_steam_shortcut(name, url, asset_paths, user_id=None):
     ]
 
     vdf_path = os.path.join(userdata_dir, "config", "shortcuts.vdf")
-    written_appid = shortcuts_vdf.add_shortcut(
+    written_appid, stale_appids = shortcuts_vdf.add_shortcut(
         vdf_path,
         appname=name,
         exe=LAUNCH_WRAPPER,
@@ -135,6 +135,13 @@ def register_steam_shortcut(name, url, asset_paths, user_id=None):
         allow_overlay=False,
     )
     assert written_appid == appid
+
+    for stale_appid in stale_appids:
+        for f in os.listdir(grid_dir):
+            if f.startswith(str(stale_appid)):
+                os.remove(os.path.join(grid_dir, f))
+                print(f"  - removed stale {f}")
+
     print(f"\nAdded/updated Steam shortcut '{name}' (appid {appid}) in {vdf_path}")
     print("Restart Steam (fully quit, not just close the window) to see it.")
     return appid
