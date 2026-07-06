@@ -72,10 +72,11 @@ class OnboardingWindow(Adw.ApplicationWindow):
 
     def __init__(self, app, on_complete):
         super().__init__(application=app, title="Set Up Steam Webapp Creator")
-        self.set_default_size(480, 480)
+        self.set_default_size(480, 640)
         self.on_complete = on_complete
         self.edge_ok = False
         self.sgdb_ok = False
+        self._key_debounce_id = None
 
         toolbar = Adw.ToolbarView()
         toolbar.add_top_bar(Adw.HeaderBar())
@@ -104,25 +105,17 @@ class OnboardingWindow(Adw.ApplicationWindow):
         self.edge_row.add_suffix(self.edge_install_button)
         group.add(self.edge_row)
 
+        self.key_row = Adw.PasswordEntryRow(title="SteamGridDB API key")
+        self.sgdb_status = Gtk.Image(icon_name="dialog-question-symbolic")
+        self.key_row.add_suffix(self.sgdb_status)
+        self.key_row.connect("changed", self._on_key_changed)
+        self.key_row.connect("entry-activated", self._on_key_activated)
+        group.add(self.key_row)
+
         content.append(group)
 
-        key_group = Adw.PreferencesGroup(title="SteamGridDB API key")
-        self.key_row = Adw.PasswordEntryRow(title="API key")
-        self.key_row.connect("entry-activated", self._on_save_key)
-        key_group.add(self.key_row)
-
         link = Gtk.LinkButton(uri=SGDB_KEY_URL, label="Get a free key at steamgriddb.com", halign=Gtk.Align.START)
-        key_group.add(link)
-
-        save_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, halign=Gtk.Align.END)
-        self.sgdb_status = Gtk.Image(icon_name="dialog-question-symbolic")
-        save_button = Gtk.Button(label="Save", css_classes=["suggested-action"])
-        save_button.connect("clicked", self._on_save_key)
-        save_row.append(self.sgdb_status)
-        save_row.append(save_button)
-        key_group.add(save_row)
-
-        content.append(key_group)
+        content.append(link)
 
         self.status_label = Gtk.Label(wrap=True)
         content.append(self.status_label)
@@ -140,10 +133,13 @@ class OnboardingWindow(Adw.ApplicationWindow):
         self._check_edge()
         if config.get_sgdb_api_key():
             self.key_row.set_text(config.get_sgdb_api_key())
-            self._on_save_key()
+            self._check_key()
 
     def _set_status(self, image, ok):
         image.set_from_icon_name("emblem-ok-symbolic" if ok else "dialog-warning-symbolic")
+        image.remove_css_class("success")
+        if ok:
+            image.add_css_class("success")
 
     def _update_continue_button(self):
         self.continue_button.set_sensitive(self.steam_ok and self.edge_ok and self.sgdb_ok)
@@ -210,10 +206,29 @@ class OnboardingWindow(Adw.ApplicationWindow):
         else:
             self.status_label.set_label(f"Install failed: {error_output.strip()}")
 
-    def _on_save_key(self, *_args):
+    def _on_key_changed(self, _entry):
+        if self._key_debounce_id:
+            GLib.source_remove(self._key_debounce_id)
+        self._key_debounce_id = GLib.timeout_add(600, self._debounced_check_key)
+
+    def _on_key_activated(self, *_args):
+        if self._key_debounce_id:
+            GLib.source_remove(self._key_debounce_id)
+            self._key_debounce_id = None
+        self._check_key()
+
+    def _debounced_check_key(self):
+        self._key_debounce_id = None
+        self._check_key()
+        return False
+
+    def _check_key(self):
         key = self.key_row.get_text().strip()
         if not key:
-            self.status_label.set_label("Enter an API key first.")
+            self.sgdb_ok = False
+            self._set_status(self.sgdb_status, False)
+            self.status_label.set_label("")
+            self._update_continue_button()
             return
         self.status_label.set_label("Checking key...")
 
