@@ -111,7 +111,7 @@ class OnboardingWindow(Adw.ApplicationWindow):
 
         self.edge_row = Adw.ActionRow(title="Microsoft Edge")
         self.edge_status = Gtk.Label()
-        self.edge_install_button = Gtk.Button(label="Install Microsoft Edge (Flatpak)", valign=Gtk.Align.CENTER)
+        self.edge_install_button = Gtk.Button(label="Install Flatpak Microsoft Edge", valign=Gtk.Align.CENTER)
         self.edge_install_button.connect("clicked", self._on_install_edge)
         self.edge_row.add_suffix(self.edge_status)
         self.edge_row.add_suffix(self.edge_install_button)
@@ -146,12 +146,16 @@ class OnboardingWindow(Adw.ApplicationWindow):
         self.continue_button.connect("clicked", self._on_continue)
         content.append(self.continue_button)
 
-        scrolled = Gtk.ScrolledWindow(
-            child=content, vexpand=True, propagate_natural_height=True, propagate_natural_width=True
-        )
-        toolbar.set_content(scrolled)
+        # No ScrolledWindow wrapper -- this dialog never needs to scroll, and
+        # ScrolledWindow's natural-size propagation to the window wasn't
+        # reliably sizing the window correctly across window managers
+        # (confirmed: the Continue button stayed cropped even with
+        # propagate_natural_height/width set). Setting the content directly
+        # lets the window's natural size genuinely reflect what it contains.
+        toolbar.set_content(content)
         self.set_content(toolbar)
 
+        self._set_status(self.sgdb_status, False)
         self._check_steam()
         self._check_edge()
         if config.get_sgdb_api_key():
