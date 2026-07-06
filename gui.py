@@ -13,7 +13,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 import create_webapp as cw  # noqa: E402
 import config  # noqa: E402
@@ -27,6 +27,19 @@ DONATE_URL = "https://example.com/donate"  # TODO: replace with the real donate 
 
 # Only a close button -- no minimize/maximize -- on every window in the app.
 NO_MINMAX_DECORATION_LAYOUT = ":close"
+
+# Explicit color instead of relying on the theme's "success" semantic class --
+# that class doesn't render as green consistently across every desktop
+# environment/theme (confirmed: no visible color on one test machine).
+_STATUS_CSS = b".status-ok { color: #26a269; }"
+
+
+def _install_status_css():
+    provider = Gtk.CssProvider()
+    provider.load_from_data(_STATUS_CSS)
+    Gtk.StyleContext.add_provider_for_display(
+        Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+    )
 
 
 def guess_name_from_url(url):
@@ -45,7 +58,7 @@ class OnboardingWindow(Adw.ApplicationWindow):
 
     def __init__(self, app, on_complete):
         super().__init__(application=app, title="Set Up Steam Webapp Creator")
-        self.set_default_size(480, -1)
+        self.set_default_size(560, -1)
         self.on_complete = on_complete
         self.edge_ok = False
         self.sgdb_ok = False
@@ -89,14 +102,22 @@ class OnboardingWindow(Adw.ApplicationWindow):
 
         content.append(group)
 
-        link = Gtk.LinkButton(uri=SGDB_KEY_URL, label="Get a free key at steamgriddb.com", halign=Gtk.Align.START)
+        link = Gtk.Label(
+            label=f'<a href="{SGDB_KEY_URL}">Get a free key at steamgriddb.com</a>',
+            use_markup=True,
+            halign=Gtk.Align.START,
+        )
         content.append(link)
 
         self.status_label = Gtk.Label(wrap=True)
         content.append(self.status_label)
 
         self.continue_button = Gtk.Button(
-            label="Continue", css_classes=["suggested-action", "pill"], halign=Gtk.Align.CENTER, sensitive=False
+            label="Continue",
+            css_classes=["suggested-action", "pill"],
+            halign=Gtk.Align.CENTER,
+            sensitive=False,
+            margin_bottom=12,
         )
         self.continue_button.connect("clicked", self._on_continue)
         content.append(self.continue_button)
@@ -115,9 +136,9 @@ class OnboardingWindow(Adw.ApplicationWindow):
 
     def _set_status(self, image, ok):
         image.set_from_icon_name("emblem-ok-symbolic" if ok else "dialog-warning-symbolic")
-        image.remove_css_class("success")
+        image.remove_css_class("status-ok")
         if ok:
-            image.add_css_class("success")
+            image.add_css_class("status-ok")
 
     def _update_continue_button(self):
         self.continue_button.set_sensitive(self.steam_ok and self.edge_ok and self.sgdb_ok)
@@ -466,8 +487,13 @@ class MainWindow(Adw.ApplicationWindow):
 class Application(Adw.Application):
     def __init__(self):
         super().__init__(application_id="io.github.ScarletPachyderm.SteamWebappCreator")
+        self._css_installed = False
 
     def do_activate(self):
+        if not self._css_installed:
+            _install_status_css()
+            self._css_installed = True
+
         win = self.props.active_window
         if win:
             win.present()
