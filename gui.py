@@ -20,6 +20,7 @@ import config  # noqa: E402
 import edge_launcher  # noqa: E402
 import sgdb_client as sgdb  # noqa: E402
 import steam_paths  # noqa: E402
+import steam_restart  # noqa: E402
 
 SGDB_KEY_URL = "https://steamgriddb.com/profile/preferences/api"
 
@@ -72,7 +73,7 @@ class OnboardingWindow(Adw.ApplicationWindow):
 
     def __init__(self, app, on_complete):
         super().__init__(application=app, title="Set Up Steam Webapp Creator")
-        self.set_default_size(480, 640)
+        self.set_default_size(480, -1)
         self.on_complete = on_complete
         self.edge_ok = False
         self.sgdb_ok = False
@@ -93,12 +94,12 @@ class OnboardingWindow(Adw.ApplicationWindow):
         group = Adw.PreferencesGroup(title="Requirements")
 
         self.steam_row = Adw.ActionRow(title="Steam")
-        self.steam_status = Gtk.Image(icon_name="dialog-question-symbolic")
+        self.steam_status = Gtk.Image(icon_name="dialog-warning-symbolic")
         self.steam_row.add_suffix(self.steam_status)
         group.add(self.steam_row)
 
         self.edge_row = Adw.ActionRow(title="Microsoft Edge")
-        self.edge_status = Gtk.Image(icon_name="dialog-question-symbolic")
+        self.edge_status = Gtk.Image(icon_name="dialog-warning-symbolic")
         self.edge_install_button = Gtk.Button(label="Install Microsoft Edge (Flatpak)", valign=Gtk.Align.CENTER)
         self.edge_install_button.connect("clicked", self._on_install_edge)
         self.edge_row.add_suffix(self.edge_status)
@@ -106,7 +107,7 @@ class OnboardingWindow(Adw.ApplicationWindow):
         group.add(self.edge_row)
 
         self.key_row = Adw.PasswordEntryRow(title="SteamGridDB API key")
-        self.sgdb_status = Gtk.Image(icon_name="dialog-question-symbolic")
+        self.sgdb_status = Gtk.Image(icon_name="dialog-warning-symbolic")
         self.key_row.add_suffix(self.sgdb_status)
         self.key_row.connect("changed", self._on_key_changed)
         self.key_row.connect("entry-activated", self._on_key_activated)
@@ -264,9 +265,10 @@ class OnboardingWindow(Adw.ApplicationWindow):
 class MainWindow(Adw.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title="Steam Webapp Creator")
-        self.set_default_size(480, 560)
+        self.set_default_size(480, -1)
 
         self.match = None
+        self._search_debounce_id = None
 
         toolbar = Adw.ToolbarView()
 
@@ -286,15 +288,11 @@ class MainWindow(Adw.ApplicationWindow):
         )
 
         self.url_entry = Adw.EntryRow(title="URL (e.g. https://netflix.com)")
-        self.name_entry = Adw.EntryRow(title="Search term (auto-filled from URL, editable)")
+        self.url_entry.connect("changed", self._on_url_changed)
+        self.url_entry.connect("entry-activated", self._on_url_activated)
         entries_group = Adw.PreferencesGroup()
         entries_group.add(self.url_entry)
-        entries_group.add(self.name_entry)
         content.append(entries_group)
-
-        self.search_button = Gtk.Button(label="Find Artwork", css_classes=["suggested-action"], halign=Gtk.Align.CENTER)
-        self.search_button.connect("clicked", self._on_search)
-        content.append(self.search_button)
 
         self.results_group = Adw.PreferencesGroup(title="Matches", visible=False)
         self.results_list = Gtk.ListBox(css_classes=["boxed-list"], selection_mode=Gtk.SelectionMode.SINGLE)
@@ -302,11 +300,17 @@ class MainWindow(Adw.ApplicationWindow):
         self.results_group.add(self.results_list)
         content.append(self.results_group)
 
+        buttons_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, halign=Gtk.Align.CENTER)
         self.create_button = Gtk.Button(
-            label="Create Steam Shortcut", css_classes=["suggested-action"], halign=Gtk.Align.CENTER, sensitive=False
+            label="Create Steam Shortcut", css_classes=["suggested-action"], sensitive=False
         )
         self.create_button.connect("clicked", self._on_create)
-        content.append(self.create_button)
+        buttons_box.append(self.create_button)
+
+        self.restart_steam_button = Gtk.Button(label="Restart Steam")
+        self.restart_steam_button.connect("clicked", self._on_restart_steam)
+        buttons_box.append(self.restart_steam_button)
+        content.append(buttons_box)
 
         self.spinner = Gtk.Spinner()
         content.append(self.spinner)
@@ -323,7 +327,6 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _set_busy(self, busy, message=""):
         self.spinner.set_spinning(busy)
-        self.search_button.set_sensitive(not busy)
         self.create_button.set_sensitive(not busy and self.match is not None)
         self.status_label.set_label(message)
 
@@ -334,20 +337,33 @@ class MainWindow(Adw.ApplicationWindow):
             row = self.results_list.get_row_at_index(0)
         self.results_group.set_visible(False)
 
-    def _on_search(self, _button):
+    def _on_url_changed(self, _entry):
+        if self._search_debounce_id:
+            GLib.source_remove(self._search_debounce_id)
+        self._search_debounce_id = GLib.timeout_add(600, self._debounced_search)
+
+    def _on_url_activated(self, *_args):
+        if self._search_debounce_id:
+            GLib.source_remove(self._search_debounce_id)
+            self._search_debounce_id = None
+        self._do_search()
+
+    def _debounced_search(self):
+        self._search_debounce_id = None
+        self._do_search()
+        return False
+
+    def _do_search(self):
         url = self.url_entry.get_text().strip()
-        if not url:
-            self.status_label.set_label("Enter a URL first.")
-            return
-
-        name = self.name_entry.get_text().strip()
-        if not name:
-            name = guess_name_from_url(url)
-            self.name_entry.set_text(name)
-
         self.match = None
         self.create_button.set_sensitive(False)
         self._clear_results()
+
+        if not url:
+            self._set_busy(False, "")
+            return
+
+        name = guess_name_from_url(url)
         self._set_busy(True, "Searching SteamGridDB...")
 
         def work():
@@ -368,6 +384,7 @@ class MainWindow(Adw.ApplicationWindow):
         if not matches:
             return
         for m in matches:
+            m["name"] = cw.clean_shortcut_name(m["name"])
             row = Adw.ActionRow(title=m["name"], subtitle="Verified" if m["verified"] else "")
             row.match_data = m
             self.results_list.append(row)
@@ -407,6 +424,20 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _create_failed(self, message):
         self._set_busy(False, f"Error: {message}")
+
+    def _on_restart_steam(self, _button):
+        self.restart_steam_button.set_sensitive(False)
+        self.status_label.set_label("Restarting Steam...")
+
+        def work():
+            steam_restart.restart_steam()
+            GLib.idle_add(self._restart_steam_done)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _restart_steam_done(self):
+        self.restart_steam_button.set_sensitive(True)
+        self.status_label.set_label("")
 
 
 class Application(Adw.Application):

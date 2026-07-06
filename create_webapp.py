@@ -24,6 +24,13 @@ def slugify(name):
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
+def clean_shortcut_name(name):
+    """SGDB disambiguates streaming-site entries from unrelated games/shows
+    with a trailing " (Website)" -- strip it so the Steam shortcut just
+    shows the plain app name."""
+    return name.removesuffix(" (Website)")
+
+
 def pick_match(name):
     matches = sgdb.search(name)
     if not matches:
@@ -185,6 +192,7 @@ def main():
     args = parser.parse_args()
 
     match = pick_match(args.name)
+    match["name"] = clean_shortcut_name(match["name"])
     slug = slugify(match["name"])
     print(f"\nFetching assets for '{match['name']}' (SGDB id {match['id']})...")
     paths = fetch_assets(match["id"], slug)
