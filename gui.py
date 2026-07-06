@@ -24,6 +24,7 @@ import steam_restart  # noqa: E402
 
 SGDB_KEY_URL = "https://steamgriddb.com/profile/preferences/api"
 DONATE_URL = "https://example.com/donate"  # TODO: replace with the real donate link
+STEAM_DOWNLOAD_URL = "https://store.steampowered.com/about/"
 
 # Only a close button -- no minimize/maximize -- on every window in the app.
 NO_MINMAX_DECORATION_LAYOUT = ":close"
@@ -51,6 +52,23 @@ def guess_name_from_url(url):
     return base.replace("-", " ").title()
 
 
+def _flatpak_install_user(app_id):
+    """Install a Flatpak app in --user scope, adding a user-level flathub
+    remote first if one doesn't already exist. A system-wide install
+    needs polkit authorization that regular user accounts often don't
+    have (confirmed failing outright, no auth prompt, on both a Fedora
+    desktop and a real Steam Deck -- SteamOS blocks system-scope changes
+    while its read-only OS protection is enabled, which it is by
+    default); --user sidesteps all of this, confirmed working on a real
+    Deck. Returns (ok, stderr)."""
+    subprocess.run(
+        ["flatpak", "remote-add", "--user", "--if-not-exists", "flathub", "https://flathub.org/repo/flathub.flatpakrepo"],
+        capture_output=True,
+    )
+    result = subprocess.run(["flatpak", "install", "--user", "-y", "flathub", app_id], capture_output=True, text=True)
+    return result.returncode == 0, result.stderr
+
+
 class OnboardingWindow(Adw.ApplicationWindow):
     """First-run setup: Steam installed, Edge installed, SGDB key set.
     Once all three pass, saves onboarding_complete and hands off to
@@ -58,7 +76,7 @@ class OnboardingWindow(Adw.ApplicationWindow):
 
     def __init__(self, app, on_complete):
         super().__init__(application=app, title="Set Up Steam Webapp Creator")
-        self.set_default_size(560, -1)
+        self.set_default_size(640, -1)
         self.on_complete = on_complete
         self.edge_ok = False
         self.sgdb_ok = False
@@ -81,12 +99,18 @@ class OnboardingWindow(Adw.ApplicationWindow):
         group = Adw.PreferencesGroup(title="Requirements")
 
         self.steam_row = Adw.ActionRow(title="Steam")
-        self.steam_status = Gtk.Image(icon_name="dialog-warning-symbolic")
+        self.steam_status = Gtk.Label()
+        self.steam_install_native_button = Gtk.Button(label="Install Native Steam", valign=Gtk.Align.CENTER)
+        self.steam_install_native_button.connect("clicked", self._on_install_native_steam)
+        self.steam_install_flatpak_button = Gtk.Button(label="Install Flatpak Steam", valign=Gtk.Align.CENTER)
+        self.steam_install_flatpak_button.connect("clicked", self._on_install_flatpak_steam)
         self.steam_row.add_suffix(self.steam_status)
+        self.steam_row.add_suffix(self.steam_install_native_button)
+        self.steam_row.add_suffix(self.steam_install_flatpak_button)
         group.add(self.steam_row)
 
         self.edge_row = Adw.ActionRow(title="Microsoft Edge")
-        self.edge_status = Gtk.Image(icon_name="dialog-warning-symbolic")
+        self.edge_status = Gtk.Label()
         self.edge_install_button = Gtk.Button(label="Install Microsoft Edge (Flatpak)", valign=Gtk.Align.CENTER)
         self.edge_install_button.connect("clicked", self._on_install_edge)
         self.edge_row.add_suffix(self.edge_status)
@@ -94,7 +118,7 @@ class OnboardingWindow(Adw.ApplicationWindow):
         group.add(self.edge_row)
 
         self.key_row = Adw.PasswordEntryRow(title="SteamGridDB API key")
-        self.sgdb_status = Gtk.Image(icon_name="dialog-warning-symbolic")
+        self.sgdb_status = Gtk.Label()
         self.key_row.add_suffix(self.sgdb_status)
         self.key_row.connect("changed", self._on_key_changed)
         self.key_row.connect("entry-activated", self._on_key_activated)
@@ -134,11 +158,16 @@ class OnboardingWindow(Adw.ApplicationWindow):
             self.key_row.set_text(config.get_sgdb_api_key())
             self._check_key()
 
-    def _set_status(self, image, ok):
-        image.set_from_icon_name("emblem-ok-symbolic" if ok else "dialog-warning-symbolic")
-        image.remove_css_class("status-ok")
+    def _set_status(self, label, ok):
+        # Pango markup with an explicit color, not a themed icon + CSS class --
+        # confirmed the theme-provided "success" class (and later a custom
+        # CSS class targeting a Gtk.Image) didn't render as green
+        # consistently across different desktop environments. Direct color
+        # in the markup itself has no external theme dependency at all.
         if ok:
-            image.add_css_class("status-ok")
+            label.set_markup('<span foreground="#26a269" weight="bold" size="large">✓</span>')
+        else:
+            label.set_markup('<span foreground="#e5a50a" weight="bold" size="large">⚠</span>')
 
     def _update_continue_button(self):
         self.continue_button.set_sensitive(self.steam_ok and self.edge_ok and self.sgdb_ok)
@@ -151,8 +180,33 @@ class OnboardingWindow(Adw.ApplicationWindow):
         except steam_paths.SteamNotFoundError as e:
             self.steam_ok = False
             self.steam_row.set_subtitle(str(e))
+        self.steam_install_native_button.set_visible(not self.steam_ok)
+        self.steam_install_flatpak_button.set_visible(not self.steam_ok)
         self._set_status(self.steam_status, self.steam_ok)
         self._update_continue_button()
+
+    def _on_install_native_steam(self, _button):
+        Gtk.show_uri(self, STEAM_DOWNLOAD_URL, 0)
+
+    def _on_install_flatpak_steam(self, _button):
+        self.steam_install_native_button.set_sensitive(False)
+        self.steam_install_flatpak_button.set_sensitive(False)
+        self.status_label.set_label("Installing Steam...")
+
+        def work():
+            ok, err = _flatpak_install_user("com.valvesoftware.Steam")
+            GLib.idle_add(self._install_steam_done, ok, err)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _install_steam_done(self, ok, error_output):
+        self.steam_install_native_button.set_sensitive(True)
+        self.steam_install_flatpak_button.set_sensitive(True)
+        if ok:
+            self.status_label.set_label("")
+            self._check_steam()
+        else:
+            self.status_label.set_label(f"Install failed: {error_output.strip()}")
 
     def _check_edge(self):
         try:
@@ -168,32 +222,12 @@ class OnboardingWindow(Adw.ApplicationWindow):
         self._update_continue_button()
 
     def _on_install_edge(self, _button):
-        # A system-wide `flatpak install` needs polkit authorization that
-        # regular user accounts often don't have -- confirmed failing
-        # outright, no auth prompt, on both a Fedora desktop and a real
-        # Steam Deck (SteamOS blocks system-scope changes while its
-        # read-only OS protection is enabled, which it is by default).
-        # Opening the system software center hits the exact same wall,
-        # since it goes through the same system D-Bus service either way.
-        # A --user install sidesteps all of this entirely (confirmed
-        # working on a real Deck) -- just needs a user-level flathub
-        # remote to exist first, since most systems only have it
-        # registered system-wide by default.
         self.edge_install_button.set_sensitive(False)
         self.status_label.set_label("Installing Microsoft Edge...")
 
         def work():
-            subprocess.run(
-                ["flatpak", "remote-add", "--user", "--if-not-exists", "flathub",
-                 "https://flathub.org/repo/flathub.flatpakrepo"],
-                capture_output=True,
-            )
-            result = subprocess.run(
-                ["flatpak", "install", "--user", "-y", "flathub", "com.microsoft.Edge"],
-                capture_output=True,
-                text=True,
-            )
-            GLib.idle_add(self._install_edge_done, result.returncode == 0, result.stderr)
+            ok, err = _flatpak_install_user("com.microsoft.Edge")
+            GLib.idle_add(self._install_edge_done, ok, err)
 
         threading.Thread(target=work, daemon=True).start()
 
