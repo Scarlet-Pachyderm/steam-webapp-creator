@@ -31,3 +31,11 @@ def get_sgdb_api_key():
 
 def set_sgdb_api_key(key):
     save(sgdb_api_key=key)
+
+
+def is_onboarding_complete():
+    return load().get("onboarding_complete", False)
+
+
+def set_onboarding_complete():
+    save(onboarding_complete=True)
