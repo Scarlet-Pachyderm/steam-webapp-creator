@@ -98,7 +98,7 @@ class OnboardingWindow(Adw.ApplicationWindow):
 
         self.edge_row = Adw.ActionRow(title="Microsoft Edge")
         self.edge_status = Gtk.Image(icon_name="dialog-question-symbolic")
-        self.edge_install_button = Gtk.Button(label="Open Software Center to Install", valign=Gtk.Align.CENTER)
+        self.edge_install_button = Gtk.Button(label="Install Microsoft Edge (Flatpak)", valign=Gtk.Align.CENTER)
         self.edge_install_button.connect("clicked", self._on_install_edge)
         self.edge_row.add_suffix(self.edge_status)
         self.edge_row.add_suffix(self.edge_install_button)
@@ -173,28 +173,42 @@ class OnboardingWindow(Adw.ApplicationWindow):
         self._update_continue_button()
 
     def _on_install_edge(self, _button):
-        # A direct `flatpak install` needs polkit authorization for a
-        # system-wide deploy, which regular user accounts often don't have
-        # (confirmed failing outright, no auth prompt, on both a Fedora
-        # desktop and a real Steam Deck). Opening the system's own software
-        # center instead goes through a path that's already properly
-        # authorized, and works the same everywhere via the appstream: URI
-        # scheme most software centers (Discover, GNOME Software) register.
-        try:
-            subprocess.Popen(["xdg-open", "appstream://com.microsoft.Edge"])
-        except FileNotFoundError:
-            self.status_label.set_label("Couldn't open a software center -- install Microsoft Edge manually.")
-            return
+        # A system-wide `flatpak install` needs polkit authorization that
+        # regular user accounts often don't have -- confirmed failing
+        # outright, no auth prompt, on both a Fedora desktop and a real
+        # Steam Deck (SteamOS blocks system-scope changes while its
+        # read-only OS protection is enabled, which it is by default).
+        # Opening the system software center hits the exact same wall,
+        # since it goes through the same system D-Bus service either way.
+        # A --user install sidesteps all of this entirely (confirmed
+        # working on a real Deck) -- just needs a user-level flathub
+        # remote to exist first, since most systems only have it
+        # registered system-wide by default.
+        self.edge_install_button.set_sensitive(False)
+        self.status_label.set_label("Installing Microsoft Edge...")
 
-        self.status_label.set_label("Waiting for Microsoft Edge to be installed...")
-        GLib.timeout_add_seconds(3, self._poll_edge_installed)
+        def work():
+            subprocess.run(
+                ["flatpak", "remote-add", "--user", "--if-not-exists", "flathub",
+                 "https://flathub.org/repo/flathub.flatpakrepo"],
+                capture_output=True,
+            )
+            result = subprocess.run(
+                ["flatpak", "install", "--user", "-y", "flathub", "com.microsoft.Edge"],
+                capture_output=True,
+                text=True,
+            )
+            GLib.idle_add(self._install_edge_done, result.returncode == 0, result.stderr)
 
-    def _poll_edge_installed(self):
-        self._check_edge()
-        if self.edge_ok:
+        threading.Thread(target=work, daemon=True).start()
+
+    def _install_edge_done(self, ok, error_output):
+        self.edge_install_button.set_sensitive(True)
+        if ok:
             self.status_label.set_label("")
-            return False
-        return True
+            self._check_edge()
+        else:
+            self.status_label.set_label(f"Install failed: {error_output.strip()}")
 
     def _on_save_key(self, *_args):
         key = self.key_row.get_text().strip()
