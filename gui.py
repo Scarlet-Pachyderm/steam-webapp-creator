@@ -180,15 +180,15 @@ class OnboardingWindow(Adw.ApplicationWindow):
 
         content.append(group)
 
-        self.install_progress = Gtk.ProgressBar(visible=False, show_text=True)
-        content.append(self.install_progress)
-
         link = Gtk.Label(
             label=f'<a href="{SGDB_KEY_URL}">Get a free key at steamgriddb.com</a>',
             use_markup=True,
             halign=Gtk.Align.START,
         )
         content.append(link)
+
+        self.install_progress = Gtk.ProgressBar(visible=False, show_text=True)
+        content.append(self.install_progress)
 
         self.status_label = Gtk.Label(wrap=True)
         content.append(self.status_label)
