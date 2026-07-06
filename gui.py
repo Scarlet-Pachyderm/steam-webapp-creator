@@ -178,7 +178,7 @@ class OnboardingWindow(Adw.ApplicationWindow):
 
         def work():
             result = subprocess.run(
-                ["flatpak", "install", "--user", "-y", "flathub", "com.microsoft.Edge"],
+                ["flatpak", "install", "-y", "flathub", "com.microsoft.Edge"],
                 capture_output=True,
                 text=True,
             )
