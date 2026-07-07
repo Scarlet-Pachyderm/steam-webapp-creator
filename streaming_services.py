@@ -84,4 +84,6 @@ STREAMING_SERVICES = {
     "dekkoo": ("dekkoo.com", "Dekkoo", None),
     "cultpix": ("cultpix.com", "Cultpix", None),
     "guidedoc": ("guidedoc.tv", "Guidedoc", None),  # verify
+    "now": ("nowtv.com", "NOW", None),
+    "now tv": ("nowtv.com", "NOW", None),
 }
