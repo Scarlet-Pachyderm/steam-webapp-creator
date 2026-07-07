@@ -70,6 +70,14 @@ def search(term):
     return [{"id": r["id"], "name": r["name"], "verified": r.get("verified", False)} for r in results]
 
 
+def get_game(game_id):
+    """Fetch a single game entry directly by its known SGDB id, bypassing
+    autocomplete -- used for entries confirmed to return unreliable
+    autocomplete matches (e.g. Disney+)."""
+    data = _get(f"/games/id/{game_id}")
+    return {"id": data["id"], "name": data["name"], "verified": data.get("verified", False)}
+
+
 def get_vertical_grid(game_id):
     grids = _get(f"/grids/game/{game_id}", {"dimensions": VERTICAL_DIMENSIONS})
     return grids[0]["url"] if grids else None

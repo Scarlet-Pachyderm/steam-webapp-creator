@@ -24,6 +24,7 @@ import sgdb_client as sgdb  # noqa: E402
 import shortcuts_export  # noqa: E402
 import steam_paths  # noqa: E402
 import steam_restart  # noqa: E402
+from streaming_services import STREAMING_SERVICES  # noqa: E402
 
 APP_NAME = "Gridge"
 SGDB_KEY_URL = "https://steamgriddb.com/profile/preferences/api"
@@ -57,6 +58,41 @@ def guess_name_from_url(url):
     host = host.removeprefix("www.")
     base = host.split(".")[0]
     return base.replace("-", " ").title()
+
+
+def _looks_like_url(text):
+    candidate = text if "://" in text else f"https://{text}"
+    host = urlparse(candidate).netloc
+    return " " not in text and "." in host
+
+
+class ResolvedInput:
+    """Result of interpreting the URL bar's free-text input. url/name are
+    None when the text isn't a recognized service name and doesn't look
+    like a URL either -- warning then explains why."""
+
+    def __init__(self, url=None, name=None, sgdb_id=None, warning=None):
+        self.url = url
+        self.name = name
+        self.sgdb_id = sgdb_id
+        self.warning = warning
+
+
+def resolve_url_input(text):
+    text = text.strip()
+    if not text:
+        return ResolvedInput()
+
+    known = STREAMING_SERVICES.get(text.lower())
+    if known:
+        domain, name, sgdb_id = known
+        return ResolvedInput(url=f"https://{domain}", name=name, sgdb_id=sgdb_id)
+
+    if _looks_like_url(text):
+        url = text if "://" in text else f"https://{text}"
+        return ResolvedInput(url=url, name=guess_name_from_url(url))
+
+    return ResolvedInput(warning=f'"{text}" isn\'t a recognized service name or a URL')
 
 
 def _all_requirements_met():
@@ -530,7 +566,7 @@ class MainWindow(Adw.ApplicationWindow):
             margin_end=24,
         )
 
-        self.url_entry = Adw.EntryRow(title="URL (e.g. https://netflix.com)")
+        self.url_entry = Adw.EntryRow(title="URL or service name (e.g. Netflix)")
         self.url_entry.connect("changed", self._on_url_changed)
         self.url_entry.connect("entry-activated", self._on_url_activated)
         clear_button = Gtk.Button(icon_name="edit-clear-symbolic", tooltip_text="Clear", valign=Gtk.Align.CENTER)
@@ -541,24 +577,28 @@ class MainWindow(Adw.ApplicationWindow):
         entries_group.add(self.url_entry)
         content.append(entries_group)
 
-        self.results_group = Adw.PreferencesGroup(title="Matches", visible=False)
+        self.url_hint = Gtk.Label(wrap=True, halign=Gtk.Align.START, margin_start=6)
+        content.append(self.url_hint)
+
+        self.results_group = Adw.PreferencesGroup(title="SGDB matches")
         self.results_list = Gtk.ListBox(css_classes=["boxed-list"], selection_mode=Gtk.SelectionMode.SINGLE)
         self.results_list.connect("row-selected", self._on_row_selected)
-        # Only the results list can genuinely grow unbounded (a broad
-        # search can return many matches) -- cap and scroll just this,
-        # so the rest of the window (buttons/status/pending label below)
-        # keeps sizing itself to its actual content instead of being
-        # dragged along by a wrapping ScrolledWindow around everything.
+        # Reserve room for ~5 rows even when empty, so the buttons/status
+        # below don't jump up and down as a search starts/clears -- only
+        # vexpand (not a height cap) so the list still grows if the user
+        # resizes the window taller.
         results_scroller = Gtk.ScrolledWindow(
             child=self.results_list,
-            propagate_natural_height=True,
-            max_content_height=300,
+            vexpand=True,
+            min_content_height=230,
             hscrollbar_policy=Gtk.PolicyType.NEVER,
         )
         self.results_group.add(results_scroller)
         content.append(self.results_group)
 
-        buttons_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, halign=Gtk.Align.CENTER)
+        buttons_box = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=8, halign=Gtk.Align.CENTER, margin_top=12
+        )
         self.create_button = Gtk.Button(
             label="Create Steam Shortcut", css_classes=["suggested-action"], sensitive=False
         )
@@ -595,17 +635,39 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _set_busy(self, busy, message=""):
         self.spinner.set_spinning(busy)
-        self.create_button.set_sensitive(not busy and self.match is not None)
         self.status_label.set_label(message)
+        if busy:
+            self.create_button.set_sensitive(False)
+        else:
+            self._update_create_button()
+
+    def _update_create_button(self):
+        resolved = resolve_url_input(self.url_entry.get_text())
+        self.create_button.set_sensitive(self.match is not None and resolved.url is not None)
+
+    def _update_url_hint(self):
+        resolved = resolve_url_input(self.url_entry.get_text())
+        if resolved.warning:
+            self.url_hint.set_markup(
+                f'<span foreground="#e5a50a">{GLib.markup_escape_text(resolved.warning)}</span>'
+            )
+        elif resolved.url:
+            shown = resolved.url.removeprefix("https://").removeprefix("http://")
+            self.url_hint.set_markup(
+                f'<span foreground="#9a9996">Shortcut for {GLib.markup_escape_text(shown)} will be added</span>'
+            )
+        else:
+            self.url_hint.set_label("")
 
     def _clear_results(self):
         row = self.results_list.get_row_at_index(0)
         while row:
             self.results_list.remove(row)
             row = self.results_list.get_row_at_index(0)
-        self.results_group.set_visible(False)
 
     def _on_url_changed(self, _entry):
+        self._update_url_hint()
+        self._update_create_button()
         if self._search_debounce_id:
             GLib.source_remove(self._search_debounce_id)
         self._search_debounce_id = GLib.timeout_add(600, self._debounced_search)
@@ -622,21 +684,23 @@ class MainWindow(Adw.ApplicationWindow):
         return False
 
     def _do_search(self):
-        url = self.url_entry.get_text().strip()
         self.match = None
         self.create_button.set_sensitive(False)
         self._clear_results()
 
-        if not url:
+        resolved = resolve_url_input(self.url_entry.get_text())
+        if resolved.url is None:
             self._set_busy(False, "")
             return
 
-        name = guess_name_from_url(url)
         self._set_busy(True, "Searching SteamGridDB...")
 
         def work():
             try:
-                matches = sgdb.search(name)
+                if resolved.sgdb_id is not None:
+                    matches = [sgdb.get_game(resolved.sgdb_id)]
+                else:
+                    matches = sgdb.search(resolved.name)
             except Exception as e:
                 GLib.idle_add(self._search_failed, str(e))
                 return
@@ -656,20 +720,20 @@ class MainWindow(Adw.ApplicationWindow):
             row = Adw.ActionRow(title=m["name"])
             row.match_data = m
             self.results_list.append(row)
-        self.results_group.set_visible(True)
         self.results_list.select_row(self.results_list.get_row_at_index(0))
 
     def _on_row_selected(self, _listbox, row):
         self.match = row.match_data if row else None
-        self.create_button.set_sensitive(self.match is not None)
+        self._update_create_button()
 
     def _on_create(self, _button):
         if not self.match:
             return
-        url = self.url_entry.get_text().strip()
-        if not url:
-            self.status_label.set_label("Enter a URL first.")
+        resolved = resolve_url_input(self.url_entry.get_text())
+        if resolved.url is None:
+            self.status_label.set_label("Enter a valid URL or recognized service name first.")
             return
+        url = resolved.url
 
         match = self.match
         self._set_busy(True, f"Fetching assets for {match['name']}...")
