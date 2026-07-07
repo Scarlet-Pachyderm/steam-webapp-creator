@@ -35,7 +35,32 @@ LOCAL_LAUNCH_WRAPPER = os.path.join(os.path.dirname(__file__), "launch-browser.s
 FLATPAK_STEAM_DATA_DIR = os.path.expanduser("~/.var/app/com.valvesoftware.Steam")
 FLATPAK_LAUNCHER_DIR = os.path.join(FLATPAK_STEAM_DATA_DIR, "gridge-launcher")
 FLATPAK_LAUNCH_WRAPPER = os.path.join(FLATPAK_LAUNCHER_DIR, "launch-browser.sh")
-_LAUNCHER_SOURCE_ITEMS = ["launch-browser.sh", "sync_gamescope_resolution.py", "vendor"]
+_LAUNCHER_COPY_ITEMS = ["sync_gamescope_resolution.py", "vendor"]
+
+# Relocating the wrapper into Steam's own sandbox-visible dir only gets
+# it exec'd -- the browser command inside it (e.g. "/usr/bin/flatpak
+# run com.microsoft.Edge ...", or even a native Edge binary path) still
+# fails once Steam's sandbox tries to run it, since that sandbox has its
+# own self-contained /usr with no view of the host's binaries at all
+# (confirmed via Steam's own logs: "/usr/bin/flatpak: No such file or
+# directory" even though that path is valid on the real host). This
+# isn't Edge-specific: nothing outside Steam's narrow granted
+# permissions is reachable, native or Flatpak alike. flatpak-spawn
+# --host is the standard, always-available escape hatch bundled in
+# every Flatpak sandbox specifically for running a command on the real
+# host regardless of filesystem permissions -- confirmed present in
+# Steam's own sandbox.
+_FLATPAK_STEAM_LAUNCH_SCRIPT = """#!/bin/sh
+unset LD_PRELOAD
+python3 "$(dirname "$0")/sync_gamescope_resolution.py" 2>/dev/null
+sleep 0.3
+# --env forwards DISPLAY/WAYLAND_DISPLAY explicitly rather than relying
+# on flatpak-spawn's default environment propagation, which isn't
+# guaranteed to carry them across every Flatpak version -- getting this
+# wrong reproduces the exact silent "nothing happens" failure this
+# whole wrapper exists to avoid.
+exec flatpak-spawn --host --env=DISPLAY="$DISPLAY" --env=WAYLAND_DISPLAY="$WAYLAND_DISPLAY" "$@"
+"""
 
 
 def is_gridge_launch_wrapper(exe):
@@ -59,7 +84,7 @@ def get_launch_wrapper_path():
 
     os.makedirs(FLATPAK_LAUNCHER_DIR, exist_ok=True)
     src_dir = os.path.dirname(__file__)
-    for name in _LAUNCHER_SOURCE_ITEMS:
+    for name in _LAUNCHER_COPY_ITEMS:
         src = os.path.join(src_dir, name)
         dest = os.path.join(FLATPAK_LAUNCHER_DIR, name)
         if os.path.isdir(src):
@@ -68,6 +93,9 @@ def get_launch_wrapper_path():
             shutil.copytree(src, dest)
         else:
             shutil.copy2(src, dest)
+
+    with open(FLATPAK_LAUNCH_WRAPPER, "w") as f:
+        f.write(_FLATPAK_STEAM_LAUNCH_SCRIPT)
     os.chmod(FLATPAK_LAUNCH_WRAPPER, 0o755)
     return FLATPAK_LAUNCH_WRAPPER
 
