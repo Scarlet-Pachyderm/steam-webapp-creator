@@ -28,7 +28,6 @@ import steam_restart  # noqa: E402
 APP_NAME = "Gridge"
 SGDB_KEY_URL = "https://steamgriddb.com/profile/preferences/api"
 DONATE_URL = "https://example.com/donate"  # TODO: replace with the real donate link
-STEAM_DOWNLOAD_URL = "https://store.steampowered.com/about/"
 EDGE_REASON_TEXT = (
     "Edge is the only Chromium browser on Linux licensed for Dolby "
     "Digital Plus/Atmos audio -- other browsers can't play it."
@@ -162,12 +161,9 @@ class OnboardingWindow(Adw.ApplicationWindow):
 
         self.steam_row = Adw.ActionRow(title="Steam")
         self.steam_status = Gtk.Label()
-        self.steam_install_native_button = Gtk.Button(label="Install Native Steam", valign=Gtk.Align.CENTER)
-        self.steam_install_native_button.connect("clicked", self._on_install_native_steam)
         self.steam_install_flatpak_button = Gtk.Button(label="Install Flatpak Steam", valign=Gtk.Align.CENTER)
         self.steam_install_flatpak_button.connect("clicked", self._on_install_flatpak_steam)
         self.steam_row.add_suffix(self.steam_status)
-        self.steam_row.add_suffix(self.steam_install_native_button)
         self.steam_row.add_suffix(self.steam_install_flatpak_button)
         group.add(self.steam_row)
 
@@ -274,16 +270,11 @@ class OnboardingWindow(Adw.ApplicationWindow):
         except steam_paths.SteamNotFoundError as e:
             self.steam_ok = False
             self.steam_row.set_subtitle(str(e))
-        self.steam_install_native_button.set_visible(not self.steam_ok)
         self.steam_install_flatpak_button.set_visible(not self.steam_ok)
         self._set_status(self.steam_status, self.steam_ok)
         self._update_continue_button()
 
-    def _on_install_native_steam(self, _button):
-        Gtk.show_uri(self, STEAM_DOWNLOAD_URL, 0)
-
     def _on_install_flatpak_steam(self, _button):
-        self.steam_install_native_button.set_sensitive(False)
         self.steam_install_flatpak_button.set_sensitive(False)
         self.status_label.set_label("Installing Steam...")
         self.install_progress.set_fraction(0.0)
@@ -296,7 +287,6 @@ class OnboardingWindow(Adw.ApplicationWindow):
         threading.Thread(target=work, daemon=True).start()
 
     def _install_steam_done(self, ok, error_output):
-        self.steam_install_native_button.set_sensitive(True)
         self.steam_install_flatpak_button.set_sensitive(True)
         self.install_progress.set_visible(False)
         if ok:

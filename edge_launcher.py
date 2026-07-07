@@ -7,11 +7,21 @@ Chromium derivative (including a bundled Electron) can play that audio.
 Rather than bundling a browser ourselves, we shell out to Edge if it's
 already installed, and ask the user to install it otherwise.
 """
+import os
 import shutil
 import subprocess
 
 NATIVE_BINARY_NAMES = ["microsoft-edge-stable", "microsoft-edge", "microsoft-edge-beta", "microsoft-edge-dev"]
 FLATPAK_APP_ID = "com.microsoft.Edge"
+
+# Chromium/Edge only shows its first-run wizard (instead of the kiosk
+# --app= page) when this sentinel file is missing from the profile dir.
+# Pre-creating it (empty) lets a shortcut work correctly on its very
+# first launch. Confirmed path on the Flatpak build; native installs
+# manage their own profile/first-run outside our scope.
+FLATPAK_FIRST_RUN_PATH = os.path.expanduser(
+    "~/.var/app/com.microsoft.Edge/config/microsoft-edge/First Run"
+)
 
 INSTALL_INSTRUCTIONS = (
     "Microsoft Edge wasn't found. Install it from Flathub "
@@ -56,6 +66,18 @@ def find_edge():
             return path, []
 
     if _flatpak_edge_installed():
+        suppress_first_run()
         return shutil.which("flatpak"), ["run", FLATPAK_APP_ID]
 
     raise EdgeNotFoundError(INSTALL_INSTRUCTIONS)
+
+
+def suppress_first_run():
+    """Pre-seed the Flatpak Edge profile's first-run sentinel so a kiosk
+    shortcut isn't hijacked by the first-run wizard. Safe to call
+    whenever we know the Flatpak Edge is installed; a no-op if the
+    profile already has one (e.g. the user already ran Edge directly)."""
+    if os.path.exists(FLATPAK_FIRST_RUN_PATH):
+        return
+    os.makedirs(os.path.dirname(FLATPAK_FIRST_RUN_PATH), exist_ok=True)
+    open(FLATPAK_FIRST_RUN_PATH, "a").close()
