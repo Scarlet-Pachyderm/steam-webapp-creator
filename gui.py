@@ -40,7 +40,16 @@ NO_MINMAX_DECORATION_LAYOUT = ":close"
 # Explicit color instead of relying on the theme's "success" semantic class --
 # that class doesn't render as green consistently across every desktop
 # environment/theme (confirmed: no visible color on one test machine).
-_STATUS_CSS = b".status-ok { color: #26a269; }"
+# .zebra-odd/.zebra-even stripe the results list (real matches and the
+# empty placeholder rows alike) so the reserved space doesn't look like
+# a dead gray box before a search happens. Selector matches the
+# boxed-list theme CSS's own specificity (list row.foo) rather than a
+# bare class, since a bare class alone wasn't reliably overriding it.
+_STATUS_CSS = b"""
+.status-ok { color: #26a269; }
+list row.zebra-odd { background-color: alpha(currentColor, 0.03); }
+list row.zebra-even { background-color: alpha(currentColor, 0.07); }
+"""
 
 
 def _install_status_css():
@@ -622,6 +631,8 @@ class MainWindow(Adw.ApplicationWindow):
         toolbar.set_content(content)
         self.set_content(toolbar)
 
+        self._clear_results()
+
     def _on_donate(self, _action, _param):
         Gtk.show_uri(self, DONATE_URL, 0)
 
@@ -642,8 +653,12 @@ class MainWindow(Adw.ApplicationWindow):
             self._update_create_button()
 
     def _update_create_button(self):
+        # A SGDB match is nice-to-have (gives real grid artwork) but not
+        # required -- some services (e.g. NOW) just aren't on SGDB at
+        # all, and users should still be able to create a working
+        # shortcut for a valid URL/known service without one.
         resolved = resolve_url_input(self.url_entry.get_text())
-        self.create_button.set_sensitive(self.match is not None and resolved.url is not None)
+        self.create_button.set_sensitive(resolved.url is not None)
 
     def _update_url_hint(self):
         resolved = resolve_url_input(self.url_entry.get_text())
@@ -659,11 +674,25 @@ class MainWindow(Adw.ApplicationWindow):
         else:
             self.url_hint.set_label("")
 
-    def _clear_results(self):
+    def _empty_results_list(self):
         row = self.results_list.get_row_at_index(0)
         while row:
             self.results_list.remove(row)
             row = self.results_list.get_row_at_index(0)
+
+    def _clear_results(self):
+        """Reset the results list to its empty, striped placeholder state
+        (5 inert rows) rather than leaving it truly blank -- that made the
+        reserved space look like a dead gray box before any search."""
+        self._empty_results_list()
+        for i in range(5):
+            row = Gtk.ListBoxRow(
+                selectable=False,
+                activatable=False,
+                css_classes=["zebra-even" if i % 2 == 0 else "zebra-odd"],
+            )
+            row.set_child(Gtk.Box(margin_top=10, margin_bottom=10))
+            self.results_list.append(row)
 
     def _on_url_changed(self, _entry):
         self._update_url_hint()
@@ -714,10 +743,12 @@ class MainWindow(Adw.ApplicationWindow):
     def _search_done(self, matches):
         self._set_busy(False, "" if matches else "No matches found.")
         if not matches:
+            self._clear_results()
             return
-        for m in matches:
+        self._empty_results_list()
+        for i, m in enumerate(matches):
             m["name"] = cw.clean_shortcut_name(m["name"])
-            row = Adw.ActionRow(title=m["name"])
+            row = Adw.ActionRow(title=m["name"], css_classes=["zebra-even" if i % 2 == 0 else "zebra-odd"])
             row.match_data = m
             self.results_list.append(row)
         self.results_list.select_row(self.results_list.get_row_at_index(0))
@@ -727,8 +758,6 @@ class MainWindow(Adw.ApplicationWindow):
         self._update_create_button()
 
     def _on_create(self, _button):
-        if not self.match:
-            return
         resolved = resolve_url_input(self.url_entry.get_text())
         if resolved.url is None:
             self.status_label.set_label("Enter a valid URL or recognized service name first.")
@@ -736,14 +765,20 @@ class MainWindow(Adw.ApplicationWindow):
         url = resolved.url
 
         match = self.match
-        self._set_busy(True, f"Fetching assets for {match['name']}...")
+        name = match["name"] if match else resolved.name
+        if match:
+            self._set_busy(True, f"Fetching assets for {name}...")
+        else:
+            self._set_busy(True, f"Creating shortcut for {name} (no SGDB artwork)...")
 
         def work():
             try:
-                slug = cw.slugify(match["name"])
-                paths = cw.fetch_assets(match["id"], slug)
-                appid = cw.register_steam_shortcut(match["name"], url, paths)
-                GLib.idle_add(self._create_done, match["name"], appid)
+                paths = {}
+                if match:
+                    slug = cw.slugify(match["name"])
+                    paths = cw.fetch_assets(match["id"], slug)
+                appid = cw.register_steam_shortcut(name, url, paths)
+                GLib.idle_add(self._create_done, name, appid)
             except (steam_paths.SteamNotFoundError, edge_launcher.EdgeNotFoundError, sgdb.SGDBError) as e:
                 GLib.idle_add(self._create_failed, str(e))
             except Exception as e:

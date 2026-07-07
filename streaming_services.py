@@ -86,4 +86,12 @@ STREAMING_SERVICES = {
     "guidedoc": ("guidedoc.tv", "Guidedoc", None),  # verify
     "now": ("nowtv.com", "NOW", None),
     "now tv": ("nowtv.com", "NOW", None),
+    "geforce now": ("play.geforcenow.com", "GeForce NOW", None),
+    "geforcenow": ("play.geforcenow.com", "GeForce NOW", None),
+    "xbox cloud gaming": ("xbox.com/play", "Xbox Cloud Gaming", None),
+    "game pass": ("xbox.com/play", "Xbox Cloud Gaming", None),
+    "xbox game pass": ("xbox.com/play", "Xbox Cloud Gaming", None),
+    "amazon luna": ("luna.amazon.com", "Amazon Luna", None),
+    "luna": ("luna.amazon.com", "Amazon Luna", None),
+    "boosteroid": ("boosteroid.com", "Boosteroid", None),
 }
