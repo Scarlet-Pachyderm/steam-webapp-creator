@@ -71,13 +71,13 @@ list row.zebra-even:not(:selected) { background-color: alpha(currentColor, 0.07)
 # a picker-thumbnail size -- not pixel-exact, just visually distinct
 # enough to tell the categories apart at a glance.
 ARTWORK_CATEGORIES = [
-    ("grid_vertical", "Vertical Grid", 90, 135),
-    ("grid_horizontal", "Horizontal Grid", 150, 70),
-    ("hero", "Hero", 170, 55),
-    ("logo", "Logo", 110, 70),
-    ("icon", "Icon", 64, 64),
+    ("grid_vertical", "Vertical Grid", 130, 195),
+    ("grid_horizontal", "Horizontal Grid", 210, 98),
+    ("hero", "Hero", 240, 78),
+    ("logo", "Logo", 160, 100),
+    ("icon", "Icon", 96, 96),
 ]
-_ARTWORK_PADDING_CELLS = 6
+_ARTWORK_PADDING_CELLS = 8
 
 
 def _install_status_css():
@@ -115,12 +115,30 @@ class ResolvedInput:
         self.warning = warning
 
 
+def _match_streaming_service(key):
+    """Resolve a partial name (e.g. "Prime" for "Prime Video", "hbo" for
+    "hbo max") without requiring the exact full alias -- but only once
+    there's a single matching *entry*. Several aliases can point at the
+    identical (domain, name) tuple (e.g. "prime video" and "amazon
+    prime video" are the same service) -- that's not ambiguous, it's
+    the same answer twice. Prefix matches are tried first and preferred
+    over substring matches, so "hbo" resolves once it's an unambiguous
+    start rather than waiting for a coincidental substring elsewhere."""
+    starts = {STREAMING_SERVICES[k] for k in STREAMING_SERVICES if k.startswith(key)}
+    if len(starts) == 1:
+        return next(iter(starts))
+    contains = {STREAMING_SERVICES[k] for k in STREAMING_SERVICES if key in k}
+    if len(contains) == 1:
+        return next(iter(contains))
+    return None
+
+
 def resolve_url_input(text):
     text = text.strip()
     if not text:
         return ResolvedInput()
 
-    known = STREAMING_SERVICES.get(text.lower())
+    known = STREAMING_SERVICES.get(text.lower()) or _match_streaming_service(text.lower())
     if known:
         domain, name, sgdb_id = known
         return ResolvedInput(url=f"https://{domain}", name=name, sgdb_id=sgdb_id)
@@ -568,7 +586,10 @@ class OnboardingWindow(Adw.ApplicationWindow):
 class MainWindow(Adw.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title=APP_NAME)
-        self.set_default_size(1040, 700)
+        # Steam Deck's native screen resolution as the default cap --
+        # bigger artwork needs more room, but this is still just the
+        # default; users can resize larger or smaller themselves.
+        self.set_default_size(1280, 800)
 
         self.match = None
         self._search_debounce_id = None
@@ -594,6 +615,11 @@ class MainWindow(Adw.ApplicationWindow):
         header.pack_end(menu_button)
         toolbar.add_top_bar(header)
 
+        # Adwaita widgets (EntryRow/PreferencesGroup) commonly default to
+        # hexpand=True themselves, which cascades up through this Box
+        # once it's a sibling in a horizontal layout -- without pinning
+        # hexpand off and giving it back its old fixed width, it grabbed
+        # far more than its original share, squeezing the artwork panel.
         content = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
             spacing=12,
@@ -601,6 +627,8 @@ class MainWindow(Adw.ApplicationWindow):
             margin_bottom=24,
             margin_start=24,
             margin_end=24,
+            hexpand=False,
+            width_request=460,
         )
 
         self.url_entry = Adw.EntryRow(title="URL or service name (e.g. Netflix)")
@@ -687,7 +715,7 @@ class MainWindow(Adw.ApplicationWindow):
             section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
             section.append(Gtk.Label(label=title, halign=Gtk.Align.START, css_classes=["heading"]))
 
-            row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
             # AUTOMATIC (not NEVER) so the scrollbar/scrolling only
             # engages once real content actually overflows the row's
             # allocated width -- a short row just sits there unscrollable.
@@ -734,7 +762,12 @@ class MainWindow(Adw.ApplicationWindow):
         return Gtk.Box(css_classes=["artwork-skeleton"], width_request=w, height_request=h)
 
     def _make_artwork_cell(self, basename, candidate, w, h):
-        picture = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, width_request=w, height_request=h)
+        # CONTAIN, not COVER -- COVER crops to fill the cell, and actual
+        # artwork aspect ratios don't always match these fixed cell
+        # sizes exactly (confirmed: logos/icons were visibly cropped).
+        # Letterboxing inside the same fixed size keeps every cell
+        # (real or skeleton) identically sized either way.
+        picture = Gtk.Picture(content_fit=Gtk.ContentFit.CONTAIN, width_request=w, height_request=h)
         overlay = Gtk.Overlay(child=picture, css_classes=["artwork-cell"])
 
         check = Gtk.Label(
