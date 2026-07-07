@@ -47,8 +47,8 @@ NO_MINMAX_DECORATION_LAYOUT = ":close"
 # bare class, since a bare class alone wasn't reliably overriding it.
 _STATUS_CSS = b"""
 .status-ok { color: #26a269; }
-list row.zebra-odd { background-color: alpha(currentColor, 0.03); }
-list row.zebra-even { background-color: alpha(currentColor, 0.07); }
+list row.zebra-odd:not(:selected) { background-color: alpha(currentColor, 0.03); }
+list row.zebra-even:not(:selected) { background-color: alpha(currentColor, 0.07); }
 """
 
 
