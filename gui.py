@@ -472,11 +472,20 @@ class OnboardingWindow(Adw.ApplicationWindow):
         self.imported_count += count
         dialog = Adw.AlertDialog(
             heading="Import Complete",
-            body=f"Imported {count} shortcut{'s' if count != 1 else ''}. "
-            "They'll appear in Steam after a restart.",
+            body=f"Imported {count} shortcut{'s' if count != 1 else ''}.",
         )
         dialog.add_response("ok", "OK")
+        # Import is only reachable once all 3 requirements are already
+        # met (same gating as Continue), so once the user acknowledges
+        # this, hand off to the main window immediately instead of
+        # making them also click Continue -- it shows the same pending
+        # shortcuts count there that a regular create would.
+        dialog.connect("response", self._on_import_dialog_response)
         dialog.present(self)
+
+    def _on_import_dialog_response(self, _dialog, _response):
+        self.close()
+        self.on_complete(self.imported_count)
 
     def _on_continue(self, _button):
         self.close()
@@ -535,7 +544,18 @@ class MainWindow(Adw.ApplicationWindow):
         self.results_group = Adw.PreferencesGroup(title="Matches", visible=False)
         self.results_list = Gtk.ListBox(css_classes=["boxed-list"], selection_mode=Gtk.SelectionMode.SINGLE)
         self.results_list.connect("row-selected", self._on_row_selected)
-        self.results_group.add(self.results_list)
+        # Only the results list can genuinely grow unbounded (a broad
+        # search can return many matches) -- cap and scroll just this,
+        # so the rest of the window (buttons/status/pending label below)
+        # keeps sizing itself to its actual content instead of being
+        # dragged along by a wrapping ScrolledWindow around everything.
+        results_scroller = Gtk.ScrolledWindow(
+            child=self.results_list,
+            propagate_natural_height=True,
+            max_content_height=300,
+            hscrollbar_policy=Gtk.PolicyType.NEVER,
+        )
+        self.results_group.add(results_scroller)
         content.append(self.results_group)
 
         buttons_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, halign=Gtk.Align.CENTER)
@@ -559,10 +579,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.pending_label = Gtk.Label(wrap=True, css_classes=["dim-label"])
         content.append(self.pending_label)
 
-        scrolled = Gtk.ScrolledWindow(
-            child=content, vexpand=True, propagate_natural_height=True, propagate_natural_width=True
-        )
-        toolbar.set_content(scrolled)
+        toolbar.set_content(content)
         self.set_content(toolbar)
 
     def _on_donate(self, _action, _param):
