@@ -1,8 +1,8 @@
-"""Export/import this tool's own Steam shortcuts (identified by exe ==
-LAUNCH_WRAPPER, so a user's own unrelated non-Steam shortcuts are never
-touched) as a portable zip archive. Bundles each shortcut's already-
-downloaded SGDB artwork so import doesn't need network access or a
-configured API key at all.
+"""Export/import this tool's own Steam shortcuts (identified via
+create_webapp.is_gridge_launch_wrapper(), so a user's own unrelated
+non-Steam shortcuts are never touched) as a portable zip archive.
+Bundles each shortcut's already-downloaded SGDB artwork so import
+doesn't need network access or a configured API key at all.
 """
 import json
 import os
@@ -34,7 +34,7 @@ def export_shortcuts(zip_path, user_id=None):
     entries = []
     for v in root.get("shortcuts", {}).values():
         exe = v.get("exe") or v.get("Exe")
-        if exe != cw.LAUNCH_WRAPPER:
+        if not cw.is_gridge_launch_wrapper(exe):
             continue
         appname = v.get("appname") or v.get("AppName")
         url = _extract_url(v.get("LaunchOptions"))

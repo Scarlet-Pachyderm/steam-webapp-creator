@@ -17,7 +17,59 @@ import steam_paths
 
 ASSET_DIR = os.path.join(os.path.dirname(__file__), "assets")
 APPLICATIONS_DIR = os.path.expanduser("~/.local/share/applications")
-LAUNCH_WRAPPER = os.path.join(os.path.dirname(__file__), "launch-browser.sh")
+
+# Where the launcher lives when Steam itself is natively installed --
+# native Steam has full host filesystem access, so pointing straight at
+# wherever Gridge itself is installed works fine.
+LOCAL_LAUNCH_WRAPPER = os.path.join(os.path.dirname(__file__), "launch-browser.sh")
+
+# Flatpak Steam's sandbox does NOT get general home/host filesystem
+# access by default (confirmed: its stock permissions only grant a
+# handful of narrow XDG dirs like music/pictures, nothing that would
+# cover wherever Gridge happens to be installed) -- so exec'ing
+# LOCAL_LAUNCH_WRAPPER silently fails (Steam shows "Launching..." then
+# reverts to "Play" with no error, no window, no process). The one path
+# Flatpak Steam is guaranteed full access to is its own persistent data
+# dir, so for a Flatpak Steam install we copy the launcher (and its
+# sync_gamescope_resolution.py + vendored Xlib dependency) there instead.
+FLATPAK_STEAM_DATA_DIR = os.path.expanduser("~/.var/app/com.valvesoftware.Steam")
+FLATPAK_LAUNCHER_DIR = os.path.join(FLATPAK_STEAM_DATA_DIR, "gridge-launcher")
+FLATPAK_LAUNCH_WRAPPER = os.path.join(FLATPAK_LAUNCHER_DIR, "launch-browser.sh")
+_LAUNCHER_SOURCE_ITEMS = ["launch-browser.sh", "sync_gamescope_resolution.py", "vendor"]
+
+
+def is_gridge_launch_wrapper(exe):
+    """True if exe is one of the launch-browser.sh paths Gridge itself
+    creates shortcuts with (native or Flatpak-Steam location) -- used by
+    export/import to find only shortcuts this tool created, never a
+    user's own unrelated non-Steam shortcuts."""
+    return exe in (LOCAL_LAUNCH_WRAPPER, FLATPAK_LAUNCH_WRAPPER)
+
+
+def get_launch_wrapper_path():
+    """Return the launch-browser.sh path to use as this shortcut's exe,
+    accounting for whether Steam itself is Flatpak-installed."""
+    try:
+        using_flatpak_steam = steam_paths.find_steam_root() == os.path.expanduser(steam_paths.FLATPAK_ROOT)
+    except steam_paths.SteamNotFoundError:
+        using_flatpak_steam = False
+
+    if not using_flatpak_steam:
+        return LOCAL_LAUNCH_WRAPPER
+
+    os.makedirs(FLATPAK_LAUNCHER_DIR, exist_ok=True)
+    src_dir = os.path.dirname(__file__)
+    for name in _LAUNCHER_SOURCE_ITEMS:
+        src = os.path.join(src_dir, name)
+        dest = os.path.join(FLATPAK_LAUNCHER_DIR, name)
+        if os.path.isdir(src):
+            if os.path.exists(dest):
+                shutil.rmtree(dest)
+            shutil.copytree(src, dest)
+        else:
+            shutil.copy2(src, dest)
+    os.chmod(FLATPAK_LAUNCH_WRAPPER, 0o755)
+    return FLATPAK_LAUNCH_WRAPPER
 
 
 def slugify(name):
@@ -26,9 +78,14 @@ def slugify(name):
 
 def clean_shortcut_name(name):
     """SGDB disambiguates streaming-site entries from unrelated games/shows
-    with a trailing " (Website)" -- strip it so the Steam shortcut just
-    shows the plain app name."""
-    return name.removesuffix(" (Website)")
+    with a trailing " (Website)" suffix -- strip it so the Steam shortcut
+    just shows the plain app name. Case varies between entries (confirmed
+    both "(Website)" and "(website)" in the wild), so match case-
+    insensitively rather than assuming one casing."""
+    suffix = " (website)"
+    if name.lower().endswith(suffix):
+        return name[: -len(suffix)]
+    return name
 
 
 def pick_match(name):
@@ -105,7 +162,8 @@ def register_steam_shortcut(name, url, asset_paths, user_id=None):
     grid_dir = os.path.join(userdata_dir, "config", "grid")
     os.makedirs(grid_dir, exist_ok=True)
 
-    appid = shortcuts_vdf.generate_appid(LAUNCH_WRAPPER, name)
+    launch_wrapper = get_launch_wrapper_path()
+    appid = shortcuts_vdf.generate_appid(launch_wrapper, name)
 
     icon_dest = None
     for basename, src in asset_paths.items():
@@ -135,8 +193,8 @@ def register_steam_shortcut(name, url, asset_paths, user_id=None):
     written_appid, stale_appids = shortcuts_vdf.add_shortcut(
         vdf_path,
         appname=name,
-        exe=LAUNCH_WRAPPER,
-        start_dir=os.path.dirname(LAUNCH_WRAPPER) + "/",
+        exe=launch_wrapper,
+        start_dir=os.path.dirname(launch_wrapper) + "/",
         icon=icon_dest or "",
         launch_options=" ".join(edge_args),
         allow_overlay=False,
