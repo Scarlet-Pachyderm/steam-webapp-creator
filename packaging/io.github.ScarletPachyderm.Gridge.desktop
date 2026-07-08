@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Gridge
+Comment=Add streaming sites and cloud gaming services as Steam shortcuts
+Exec=gridge
+Icon=io.github.ScarletPachyderm.Gridge
+Terminal=false
+Categories=Utility;Network;

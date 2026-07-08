@@ -21,6 +21,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 import create_webapp as cw  # noqa: E402
 import config  # noqa: E402
 import edge_launcher  # noqa: E402
+import host_exec  # noqa: E402
 import sgdb_client as sgdb  # noqa: E402
 import shortcuts_export  # noqa: E402
 import steam_paths  # noqa: E402
@@ -28,6 +29,9 @@ import steam_restart  # noqa: E402
 from streaming_services import STREAMING_SERVICES  # noqa: E402
 
 APP_NAME = "Gridge"
+GRIDGE_VERSION = "1.0.0"
+GITHUB_URL = "https://github.com/Scarlet-Pachyderm/Gridge"
+ISSUES_URL = "https://github.com/Scarlet-Pachyderm/Gridge/issues"
 SGDB_KEY_URL = "https://steamgriddb.com/profile/preferences/api"
 DONATE_URL = "https://example.com/donate"  # TODO: replace with the real donate link
 EDGE_REASON_TEXT = (
@@ -201,11 +205,13 @@ def _flatpak_install_user(app_id, progress_callback=None):
     thread need to marshal it back to the main thread themselves (e.g.
     via GLib.idle_add) before touching any widget."""
     subprocess.run(
-        ["flatpak", "remote-add", "--user", "--if-not-exists", "flathub", "https://flathub.org/repo/flathub.flatpakrepo"],
+        host_exec.wrap(
+            ["flatpak", "remote-add", "--user", "--if-not-exists", "flathub", "https://flathub.org/repo/flathub.flatpakrepo"]
+        ),
         capture_output=True,
     )
     process = subprocess.Popen(
-        ["flatpak", "install", "--user", "-y", "flathub", app_id],
+        host_exec.wrap(["flatpak", "install", "--user", "-y", "flathub", app_id]),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -624,9 +630,14 @@ class MainWindow(Adw.ApplicationWindow):
         preferences_action.connect("activate", self._on_preferences)
         self.add_action(preferences_action)
 
+        about_action = Gio.SimpleAction.new("about", None)
+        about_action.connect("activate", self._on_about)
+        self.add_action(about_action)
+
         menu = Gio.Menu()
         menu.append("Donate", "win.donate")
         menu.append("Preferences", "win.preferences")
+        menu.append("About Gridge", "win.about")
         menu_button = Gtk.MenuButton(icon_name="emblem-system-symbolic", tooltip_text="Menu", menu_model=menu)
         header.pack_end(menu_button)
         toolbar.add_top_bar(header)
@@ -987,6 +998,19 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _on_donate(self, _action, _param):
         Gtk.show_uri(self, DONATE_URL, 0)
+
+    def _on_about(self, _action, _param):
+        about = Adw.AboutDialog(
+            application_name=APP_NAME,
+            application_icon="io.github.ScarletPachyderm.Gridge",
+            version=GRIDGE_VERSION,
+            developer_name="Scarlet-Pachyderm",
+            developers=["Scarlet-Pachyderm"],
+            website=GITHUB_URL,
+            issue_url=ISSUES_URL,
+            copyright="© 2026 Scarlet-Pachyderm",
+        )
+        about.present(self)
 
     def _on_preferences(self, _action, _param):
         def on_complete(imported_count):

@@ -12,11 +12,18 @@ import sys
 from urllib.parse import urlparse
 
 import edge_launcher
+import host_exec
 import sgdb_client as sgdb
 import shortcuts_vdf
 import steam_paths
 
-ASSET_DIR = os.path.join(os.path.dirname(__file__), "assets")
+# XDG_CACHE_HOME, not a path next to the source files -- the latter
+# resolves to /app/share/gridge/assets once packaged as a Flatpak,
+# which is the read-only app installation dir; writes there would fail
+# entirely. Flatpak automatically redirects XDG_CACHE_HOME to this
+# app's own private, writable cache dir, same pattern config.py already
+# uses for XDG_CONFIG_HOME.
+ASSET_DIR = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "gridge", "assets")
 APPLICATIONS_DIR = os.path.expanduser("~/.local/share/applications")
 
 # Where the launcher lives when Steam itself is natively installed --
@@ -79,12 +86,15 @@ def _grant_steam_flatpak_spawn_permission():
     call failed: ServiceUnknown ... --host only works when the Flatpak
     is allowed to talk to org.freedesktop.Flatpak" -- Valve never
     designed Steam's Flatpak build to spawn arbitrary host processes for
-    non-Steam shortcuts). Gridge runs unsandboxed, so it can grant this
-    itself rather than requiring the user to run `flatpak override`
-    manually. Idempotent; a no-op if already granted. Takes effect on
-    Steam's next launch, not an already-running instance."""
+    non-Steam shortcuts). Gridge grants this itself (via flatpak-spawn
+    --host if Gridge itself is sandboxed, direct otherwise) rather than
+    requiring the user to run `flatpak override` manually. Idempotent;
+    a no-op if already granted. Takes effect on Steam's next launch,
+    not an already-running instance."""
     subprocess.run(
-        ["flatpak", "override", "--user", "com.valvesoftware.Steam", "--talk-name=org.freedesktop.Flatpak"],
+        host_exec.wrap(
+            ["flatpak", "override", "--user", "com.valvesoftware.Steam", "--talk-name=org.freedesktop.Flatpak"]
+        ),
         capture_output=True,
     )
 

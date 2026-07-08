@@ -11,10 +11,10 @@ from inside a distrobox/toolbox container), even though the
 filesystem paths themselves are shared and visible.
 """
 import os
-import shutil
 import subprocess
 import time
 
+import host_exec
 import steam_paths
 
 POLL_INTERVAL = 0.5
@@ -22,13 +22,13 @@ POLL_TIMEOUT = 60
 
 
 def _steam_pid_running():
-    return subprocess.run(["pidof", "steam"], capture_output=True).returncode == 0
+    return subprocess.run(host_exec.wrap(["pidof", "steam"]), capture_output=True).returncode == 0
 
 
 def restart_steam():
     pids = _steam_pids()
     if pids:
-        subprocess.run(["kill", "-15", *pids], capture_output=True)
+        subprocess.run(host_exec.wrap(["kill", "-15", *pids]), capture_output=True)
 
     waited = 0.0
     while _steam_pid_running() and waited < POLL_TIMEOUT:
@@ -41,7 +41,7 @@ def restart_steam():
         return
 
     if root == os.path.expanduser(steam_paths.FLATPAK_ROOT):
-        flatpak = shutil.which("flatpak")
+        flatpak = host_exec.which("flatpak")
         if flatpak:
             _launch_and_wait([flatpak, "run", "com.valvesoftware.Steam"])
         return
@@ -56,17 +56,17 @@ def restart_steam():
     launcher = os.path.join(root, "steam.sh")
     if os.path.exists(launcher):
         _launch_and_wait([launcher, "-silent"])
-    elif shutil.which("steam"):
+    elif host_exec.which("steam"):
         _launch_and_wait(["steam", "-silent"])
 
 
 def _steam_pids():
-    result = subprocess.run(["pidof", "steam"], capture_output=True, text=True)
+    result = subprocess.run(host_exec.wrap(["pidof", "steam"]), capture_output=True, text=True)
     return result.stdout.split()
 
 
 def _launch_and_wait(argv):
-    subprocess.Popen(argv, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.Popen(host_exec.wrap(argv), start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     waited = 0.0
     while not _steam_pid_running() and waited < POLL_TIMEOUT:
         time.sleep(POLL_INTERVAL)

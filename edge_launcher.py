@@ -9,8 +9,9 @@ already installed, and ask the user to install it otherwise.
 """
 import json
 import os
-import shutil
 import subprocess
+
+import host_exec
 
 NATIVE_BINARY_NAMES = ["microsoft-edge-stable", "microsoft-edge", "microsoft-edge-beta", "microsoft-edge-dev"]
 FLATPAK_APP_ID = "com.microsoft.Edge"
@@ -62,7 +63,7 @@ _FRE_SEED = {
 # tour from ever deciding a "what's new" page is owed.
 def _get_flatpak_edge_version():
     result = subprocess.run(
-        ["flatpak", "info", FLATPAK_APP_ID],
+        host_exec.wrap(["flatpak", "info", FLATPAK_APP_ID]),
         capture_output=True, text=True,
     )
     for line in result.stdout.splitlines():
@@ -83,11 +84,11 @@ class EdgeNotFoundError(RuntimeError):
 
 
 def _flatpak_edge_installed():
-    flatpak = shutil.which("flatpak")
+    flatpak = host_exec.which("flatpak")
     if not flatpak:
         return False
     result = subprocess.run(
-        [flatpak, "info", FLATPAK_APP_ID],
+        host_exec.wrap([flatpak, "info", FLATPAK_APP_ID]),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -108,13 +109,13 @@ def find_edge():
     after it (confirmed on real hardware: --app/--start-fullscreen/etc.
     all opened as literal tabs instead of being parsed)."""
     for name in NATIVE_BINARY_NAMES:
-        path = shutil.which(name)
+        path = host_exec.which(name)
         if path:
             return path, []
 
     if _flatpak_edge_installed():
         suppress_first_run()
-        return shutil.which("flatpak"), ["run", FLATPAK_APP_ID]
+        return host_exec.which("flatpak"), ["run", FLATPAK_APP_ID]
 
     raise EdgeNotFoundError(INSTALL_INSTRUCTIONS)
 

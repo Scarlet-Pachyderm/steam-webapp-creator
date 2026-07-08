@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.ScarletPachyderm.Gridge</id>
+  <name>Gridge</name>
+  <summary>Add streaming sites and cloud gaming services as Steam shortcuts</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <!-- TODO: pick a real project license before Flathub submission (MIT,
+       GPL-3.0-or-later, etc.) and update this to match a LICENSE file
+       in the repo -- left unset rather than guessed. -->
+  <project_license>LicenseRef-proprietary</project_license>
+  <description>
+    <p>
+      Gridge lets you type a URL or a known streaming/cloud-gaming service
+      name, finds matching artwork on SteamGridDB, and creates a non-Steam
+      shortcut so it shows up as a native-looking tile in Steam's Game
+      Mode -- built with the Steam Deck in mind.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.ScarletPachyderm.Gridge.desktop</launchable>
+  <url type="homepage">https://github.com/Scarlet-Pachyderm/Gridge</url>
+  <url type="bugtracker">https://github.com/Scarlet-Pachyderm/Gridge/issues</url>
+  <developer_name>Scarlet-Pachyderm</developer_name>
+  <releases>
+    <release version="1.0.0" date="2026-07-08"/>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>
