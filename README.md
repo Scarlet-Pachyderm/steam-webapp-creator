@@ -5,7 +5,9 @@ Type a URL or the name of a streaming/cloud-gaming service, and Gridge finds mat
 ## Requirements
 1. Steam installed, either native OS package or Flatpak
 2. Microsoft Edge
-3. SteamGridDB API key 
+3. SteamGridDB API key
+
+![Set up](screenshots/setup.png)
 
 ## What it does
 
@@ -14,6 +16,8 @@ Type a URL or the name of a streaming/cloud-gaming service, and Gridge finds mat
 3. Click Create Steam Shortcut. Restart Steam, and the new shortcut appears in your library, ready to launch straight into the site in a clean, chromeless window.
 
 A shortcut can be created even for services that don't have SteamGridDB artwork at all, and even for services not on Gridge's built-in name list (just type the full URL instead).
+
+![Main window](screenshots/main.png)
 
 ## Why Microsoft Edge
 
