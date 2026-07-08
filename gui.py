@@ -403,8 +403,16 @@ class OnboardingWindow(Adw.ApplicationWindow):
         self.steam_install_flatpak_button.set_sensitive(True)
         self.install_progress.set_visible(False)
         if ok:
-            self.status_label.set_label("")
             self._check_steam()
+            # find_steam_root() looks for a userdata dir, which Steam
+            # only creates once a real login happens -- installed but
+            # not-yet-logged-in still reads as "not detected" here, and
+            # without an explanation it looks like the install silently
+            # failed rather than needing one more manual step.
+            if self.steam_ok:
+                self.status_label.set_label("")
+            else:
+                self.status_label.set_label("Steam installed -- log into Steam once, then this will detect it.")
         else:
             self.status_label.set_label(f"Install failed: {error_output.strip()}")
 

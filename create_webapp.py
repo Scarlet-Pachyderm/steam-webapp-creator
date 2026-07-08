@@ -73,10 +73,15 @@ exec flatpak-spawn --host --env=DISPLAY="$DISPLAY" --env=WAYLAND_DISPLAY="$WAYLA
 
 def is_gridge_launch_wrapper(exe):
     """True if exe is one of the launch-browser.sh paths Gridge itself
-    creates shortcuts with (native or Flatpak-Steam location) -- used by
-    export/import to find only shortcuts this tool created, never a
-    user's own unrelated non-Steam shortcuts."""
-    return exe in (LOCAL_LAUNCH_WRAPPER, FLATPAK_LAUNCH_WRAPPER)
+    creates shortcuts with -- used by export/import to find only
+    shortcuts this tool created, never a user's own unrelated non-Steam
+    shortcuts. Covers the native-Steam-root-relative case (see
+    get_launch_wrapper_path) by directory name rather than a fixed
+    constant, since the exact path depends on which native root was
+    detected (~/.local/share/Steam vs ~/.steam/steam)."""
+    if exe in (LOCAL_LAUNCH_WRAPPER, FLATPAK_LAUNCH_WRAPPER):
+        return True
+    return os.path.basename(exe) == "launch-browser.sh" and os.path.basename(os.path.dirname(exe)) == "gridge-launcher"
 
 
 def _grant_steam_flatpak_spawn_permission():
@@ -99,23 +104,17 @@ def _grant_steam_flatpak_spawn_permission():
     )
 
 
-def get_launch_wrapper_path():
-    """Return the launch-browser.sh path to use as this shortcut's exe,
-    accounting for whether Steam itself is Flatpak-installed."""
-    try:
-        using_flatpak_steam = steam_paths.find_steam_root() == os.path.expanduser(steam_paths.FLATPAK_ROOT)
-    except steam_paths.SteamNotFoundError:
-        using_flatpak_steam = False
-
-    if not using_flatpak_steam:
-        return LOCAL_LAUNCH_WRAPPER
-
-    _grant_steam_flatpak_spawn_permission()
-    os.makedirs(FLATPAK_LAUNCHER_DIR, exist_ok=True)
+def _copy_launcher(dest_dir, script_content=None):
+    """Copy the wrapper + its runtime dependencies into dest_dir.
+    script_content overrides launch-browser.sh's own content (used for
+    the flatpak-spawn-wrapped Flatpak-Steam variant); None just copies
+    the plain script unchanged (native Steam, which isn't sandboxed and
+    so needs no escape hatch, regardless of whether Gridge itself is)."""
+    os.makedirs(dest_dir, exist_ok=True)
     src_dir = os.path.dirname(__file__)
     for name in _LAUNCHER_COPY_ITEMS:
         src = os.path.join(src_dir, name)
-        dest = os.path.join(FLATPAK_LAUNCHER_DIR, name)
+        dest = os.path.join(dest_dir, name)
         if os.path.isdir(src):
             if os.path.exists(dest):
                 shutil.rmtree(dest)
@@ -123,10 +122,56 @@ def get_launch_wrapper_path():
         else:
             shutil.copy2(src, dest)
 
-    with open(FLATPAK_LAUNCH_WRAPPER, "w") as f:
-        f.write(_FLATPAK_STEAM_LAUNCH_SCRIPT)
-    os.chmod(FLATPAK_LAUNCH_WRAPPER, 0o755)
-    return FLATPAK_LAUNCH_WRAPPER
+    wrapper_path = os.path.join(dest_dir, "launch-browser.sh")
+    if script_content is not None:
+        with open(wrapper_path, "w") as f:
+            f.write(script_content)
+    else:
+        shutil.copy2(os.path.join(src_dir, "launch-browser.sh"), wrapper_path)
+    os.chmod(wrapper_path, 0o755)
+    return wrapper_path
+
+
+def get_launch_wrapper_path():
+    """Return the launch-browser.sh path to use as this shortcut's exe.
+
+    LOCAL_LAUNCH_WRAPPER (wherever Gridge's own source lives) only
+    works when BOTH sides can see it: Gridge running unsandboxed
+    (plain `python3 gui.py`, e.g. during development) AND Steam being
+    native. Any other combination needs the wrapper relocated
+    somewhere both sides can reach regardless of sandboxing:
+
+    - Steam is Flatpak: its sandbox can't see anything outside its own
+      persistent data dir (confirmed: narrow stock permissions, no
+      general home access), so the wrapper goes there, wrapped with
+      flatpak-spawn --host since that sandbox is what constrains the
+      browser-launch command inside it.
+    - Steam is native but Gridge itself is a packaged Flatpak: Gridge's
+      own install location (e.g. /app/share/gridge) isn't a real host
+      path at all once packaged -- it only exists inside Gridge's own
+      mount namespace, so even native Steam's full host access can't
+      see it (confirmed on real hardware: "No such file or directory"
+      for a /app/share/gridge/launch-browser.sh exe). The wrapper goes
+      inside Steam's own root instead, which Gridge can still write to
+      (a plain home-relative path, covered by --filesystem=home) and
+      native Steam already reads/writes freely with no sandbox of its
+      own to route around -- so the plain, unwrapped script is enough.
+    """
+    try:
+        steam_root = steam_paths.find_steam_root()
+        using_flatpak_steam = steam_root == os.path.expanduser(steam_paths.FLATPAK_ROOT)
+    except steam_paths.SteamNotFoundError:
+        steam_root = None
+        using_flatpak_steam = False
+
+    if not host_exec.IN_FLATPAK and not using_flatpak_steam:
+        return LOCAL_LAUNCH_WRAPPER
+
+    if using_flatpak_steam:
+        _grant_steam_flatpak_spawn_permission()
+        return _copy_launcher(FLATPAK_LAUNCHER_DIR, script_content=_FLATPAK_STEAM_LAUNCH_SCRIPT)
+
+    return _copy_launcher(os.path.join(steam_root, "gridge-launcher"))
 
 
 def slugify(name):
