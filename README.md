@@ -21,7 +21,7 @@ Beyond that, Gridge also handles in the background:
 - **Export and import shortcuts** -- back up the set of shortcuts Gridge created (plus their artwork) as a zip, and restore them on another machine or after a reset, no re-entering URLs or re-picking artwork required.
 - **(Planned) Steam Input remapping for easier web navigation in Game Mode** -- not implemented yet.
 
-![Main window](screenshots/main.png)
+![Main window](screenshots/main2.png)
 
 ## Why Microsoft Edge
 
