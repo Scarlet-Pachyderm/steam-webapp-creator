@@ -9,7 +9,11 @@
         "--socket=fallback-x11",
         "--device=dri",
         "--talk-name=org.freedesktop.Flatpak",
-        "--filesystem=home"
+        "--filesystem=home",
+        "--filesystem=xdg-data/Steam:rw",
+        "--filesystem=~/.steam:rw",
+        "--filesystem=~/.var/app/com.valvesoftware.Steam:rw",
+        "--filesystem=~/.var/app/com.microsoft.Edge:rw"
     ],
     "modules": [
         {
