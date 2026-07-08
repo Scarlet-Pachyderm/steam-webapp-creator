@@ -959,15 +959,22 @@ class MainWindow(Adw.ApplicationWindow):
             "icon": sgdb.get_icon_candidates,
         }
 
-        def work():
-            for basename, fetch in fetchers.items():
+        # One thread per category, not one thread looping through all 5
+        # sequentially -- a category's thumbnails can't start loading
+        # until its own candidate list arrives, so fetching the lists
+        # sequentially meant later categories (hero/logo/icon) sat
+        # showing skeletons noticeably longer than they needed to,
+        # queued behind earlier categories' round-trips. Each fetch now
+        # starts as early as possible instead of waiting its turn.
+        for basename, fetch in fetchers.items():
+            def work(basename=basename, fetch=fetch):
                 try:
                     candidates = fetch(game_id)
                 except Exception:
                     candidates = []
                 GLib.idle_add(self._artwork_candidates_ready, match, basename, candidates)
 
-        threading.Thread(target=work, daemon=True).start()
+            threading.Thread(target=work, daemon=True).start()
 
     def _artwork_candidates_ready(self, match, basename, candidates):
         # Guards against a race: if the user picked a different match
