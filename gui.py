@@ -33,7 +33,7 @@ GRIDGE_VERSION = "1.0.0"
 GITHUB_URL = "https://github.com/Scarlet-Pachyderm/Gridge"
 ISSUES_URL = "https://github.com/Scarlet-Pachyderm/Gridge/issues"
 SGDB_KEY_URL = "https://steamgriddb.com/profile/preferences/api"
-DONATE_URL = "https://example.com/donate"  # TODO: replace with the real donate link
+DONATE_URL = "https://github.com/Scarlet-Pachyderm/gridge#donate"
 EDGE_REASON_TEXT = (
     "Edge is the only Chromium browser on Linux licensed for Dolby "
     "Digital Plus/Atmos audio -- other browsers can't play it."
