@@ -13,7 +13,7 @@
       Gridge lets you type a URL or a known streaming/cloud-gaming service
       name, finds matching artwork on SteamGridDB, and creates a non-Steam
       shortcut so it shows up as a native-looking tile in Steam's Game
-      Mode -- built with the Steam Deck in mind.
+      Mode -- built for Steam hardware in mind.
     </p>
   </description>
   <launchable type="desktop-id">io.github.ScarletPachyderm.Gridge.desktop</launchable>
