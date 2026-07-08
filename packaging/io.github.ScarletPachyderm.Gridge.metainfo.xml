@@ -6,7 +6,7 @@
   <metadata_license>CC0-1.0</metadata_license>
   <!-- TODO: pick a real project license before Flathub submission (MIT,
        GPL-3.0-or-later, etc.) and update this to match a LICENSE file
-       in the repo -- left unset rather than guessed. -->
+       in the repo; left unset rather than guessed. -->
   <project_license>LicenseRef-proprietary</project_license>
   <description>
     <p>
