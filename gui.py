@@ -359,6 +359,23 @@ class OnboardingWindow(Adw.ApplicationWindow):
             self.key_row.set_text(config.get_sgdb_api_key())
             self._check_key()
 
+        # Installing Steam only gets you halfway there -- find_steam_root()
+        # looks for a userdata dir, which Steam only creates once the user
+        # actually logs in, and that login happens in Steam's own window,
+        # not something Gridge gets notified about. Without re-checking
+        # periodically, onboarding would keep showing "Steam not detected"
+        # until the user restarted Gridge entirely even after logging in.
+        self._requirements_poll_id = GLib.timeout_add_seconds(3, self._poll_requirements)
+        # Covers every way this window can close (Continue, import, or just
+        # the header bar's close button) in one place, rather than
+        # duplicating a "stop the poll" call at each of those call sites.
+        self.connect("destroy", lambda *_a: GLib.source_remove(self._requirements_poll_id))
+
+    def _poll_requirements(self):
+        self._check_steam()
+        self._check_edge()
+        return True
+
     def _set_status(self, label, ok):
         # Pango markup with an explicit color, not a themed icon + CSS class --
         # confirmed the theme-provided "success" class (and later a custom
@@ -389,7 +406,7 @@ class OnboardingWindow(Adw.ApplicationWindow):
 
     def _on_install_flatpak_steam(self, _button):
         self.steam_install_flatpak_button.set_sensitive(False)
-        self.status_label.set_label("Installing Steam...")
+        self.status_label.set_label("Installing Steam from Flathub...")
         self.install_progress.set_fraction(0.0)
         self.install_progress.set_visible(True)
 
@@ -434,7 +451,7 @@ class OnboardingWindow(Adw.ApplicationWindow):
 
     def _on_install_edge(self, _button):
         self.edge_install_button.set_sensitive(False)
-        self.status_label.set_label("Installing Microsoft Edge...")
+        self.status_label.set_label("Installing Microsoft Edge from Flathub...")
         self.install_progress.set_fraction(0.0)
         self.install_progress.set_visible(True)
 
