@@ -247,13 +247,21 @@ class OnboardingWindow(Adw.ApplicationWindow):
     launch, not cached), or reopened from the Preferences menu. Once all
     three pass, hands off to on_complete() to open the main window."""
 
-    def __init__(self, app, on_complete):
+    def __init__(self, app, on_complete, auto_advance=True):
         super().__init__(application=app, title=f"Set Up {APP_NAME}")
         self.set_default_size(700, -1)
         self.on_complete = on_complete
+        # Auto-close and hand off the moment all 3 requirements become
+        # met via the background poll (e.g. right after a real Steam
+        # login completes) -- but only for the "requirements weren't
+        # met yet" first-run case. Reopening via Preferences when
+        # everything's already fine should never auto-close a window
+        # the user just deliberately opened to look at/change something.
+        self.auto_advance = auto_advance
         self.edge_ok = False
         self.sgdb_ok = False
         self._key_debounce_id = None
+        self._awaiting_steam_login = False
         self.imported_count = 0
 
         toolbar = Adw.ToolbarView()
@@ -374,6 +382,9 @@ class OnboardingWindow(Adw.ApplicationWindow):
     def _poll_requirements(self):
         self._check_steam()
         self._check_edge()
+        if self.auto_advance and self.steam_ok and self.edge_ok and self.sgdb_ok:
+            self._on_continue(None)
+            return False
         return True
 
     def _set_status(self, label, ok):
@@ -397,6 +408,9 @@ class OnboardingWindow(Adw.ApplicationWindow):
             root = steam_paths.find_steam_root()
             self.steam_ok = True
             self.steam_row.set_subtitle(root)
+            if self._awaiting_steam_login:
+                self._awaiting_steam_login = False
+                self.status_label.set_label("")
         except steam_paths.SteamNotFoundError as e:
             self.steam_ok = False
             self.steam_row.set_subtitle(str(e))
@@ -420,16 +434,21 @@ class OnboardingWindow(Adw.ApplicationWindow):
         self.steam_install_flatpak_button.set_sensitive(True)
         self.install_progress.set_visible(False)
         if ok:
+            # The Flathub Steam package is just a small bootstrap
+            # downloader -- launching it is what actually triggers the
+            # real client's first-time download/install, which
+            # otherwise happens completely silently for a few minutes
+            # with no visible progress (confirmed: looks exactly like
+            # the installer did nothing) before it ever asks to log in.
+            # Detached (start_new_session=True under the hood), so it
+            # keeps running even if the user closes Gridge meanwhile.
+            steam_restart.launch_flatpak_steam_detached()
+            self._awaiting_steam_login = True
+            self.status_label.set_label(
+                "Launching Steam for first-time setup -- this can take a few "
+                "minutes, then it'll ask you to log in."
+            )
             self._check_steam()
-            # find_steam_root() looks for a userdata dir, which Steam
-            # only creates once a real login happens -- installed but
-            # not-yet-logged-in still reads as "not detected" here, and
-            # without an explanation it looks like the install silently
-            # failed rather than needing one more manual step.
-            if self.steam_ok:
-                self.status_label.set_label("")
-            else:
-                self.status_label.set_label("Steam installed -- log into Steam once, then this will detect it.")
         else:
             self.status_label.set_label(f"Install failed: {error_output.strip()}")
 
@@ -1043,7 +1062,7 @@ class MainWindow(Adw.ApplicationWindow):
                 self.pending_shortcuts_count += imported_count
                 self._update_pending_label()
 
-        OnboardingWindow(self.get_application(), on_complete=on_complete).present()
+        OnboardingWindow(self.get_application(), on_complete=on_complete, auto_advance=False).present()
 
     def _set_busy(self, busy, message=""):
         self.spinner.set_spinning(busy)

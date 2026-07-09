@@ -71,3 +71,26 @@ def _launch_and_wait(argv):
     while not _steam_pid_running() and waited < POLL_TIMEOUT:
         time.sleep(POLL_INTERVAL)
         waited += POLL_INTERVAL
+
+
+def launch_flatpak_steam_detached():
+    """Launch Steam (Flatpak) right after installing it, detached from
+    our own process (start_new_session=True) so it keeps running even
+    if Gridge itself closes. The Flathub Steam package is just a small
+    bootstrap downloader -- launching it is what actually triggers the
+    real client's multi-minute first-time download/install, which
+    otherwise happens completely silently with no visible progress at
+    all (confirmed: looks exactly like the installer just did nothing).
+    Fire-and-forget; doesn't wait for the pid the way _launch_and_wait
+    does, since the caller already has its own longer-lived polling for
+    "is Steam actually usable yet" (a real userdata dir, which only
+    appears once the user has logged in)."""
+    flatpak = host_exec.which("flatpak")
+    if not flatpak:
+        return
+    subprocess.Popen(
+        host_exec.wrap([flatpak, "run", "com.valvesoftware.Steam"]),
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
