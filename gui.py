@@ -730,6 +730,30 @@ class MainWindow(Adw.ApplicationWindow):
         content.append(self.url_hint)
 
         self.results_group = Adw.PreferencesGroup(title="SGDB matches")
+
+        # Lets a user search SteamGridDB directly, independent of
+        # whatever the URL bar resolves to -- useful when the
+        # auto-derived name guess isn't a good match, or they want to
+        # link a URL to a completely different SGDB entry's artwork.
+        sgdb_search_toggle = Gtk.ToggleButton(
+            icon_name="system-search-symbolic",
+            tooltip_text="Search SteamGridDB directly",
+            valign=Gtk.Align.CENTER,
+            css_classes=["flat"],
+        )
+        sgdb_search_toggle.connect("toggled", self._on_toggle_sgdb_search)
+        self.results_group.set_header_suffix(sgdb_search_toggle)
+
+        self.sgdb_search_entry = Gtk.SearchEntry(placeholder_text="Search SteamGridDB...")
+        self.sgdb_search_entry.connect("search-changed", self._on_sgdb_search_changed)
+        self.sgdb_search_entry.connect("activate", self._on_sgdb_search_activated)
+        self.sgdb_search_revealer = Gtk.Revealer(
+            child=self.sgdb_search_entry,
+            transition_type=Gtk.RevealerTransitionType.SLIDE_DOWN,
+            reveal_child=False,
+        )
+        self.results_group.add(self.sgdb_search_revealer)
+
         self.results_list = Gtk.ListBox(css_classes=["boxed-list"], selection_mode=Gtk.SelectionMode.SINGLE)
         self.results_list.connect("row-selected", self._on_row_selected)
         self.results_list.connect("row-activated", self._on_row_activated)
@@ -1165,15 +1189,43 @@ class MainWindow(Adw.ApplicationWindow):
         if resolved.url is None:
             self._set_busy(False, "")
             return
+        self._run_sgdb_search(resolved.name, resolved.sgdb_id)
 
+    def _on_toggle_sgdb_search(self, button):
+        active = button.get_active()
+        self.sgdb_search_revealer.set_reveal_child(active)
+        if active:
+            self.sgdb_search_entry.grab_focus()
+        else:
+            # Just clears the field for next time -- doesn't touch
+            # whatever's currently shown in the matches list, so closing
+            # the search box never wipes out a selection already made.
+            self.sgdb_search_entry.set_text("")
+
+    def _on_sgdb_search_changed(self, _entry):
+        self._do_sgdb_search()
+
+    def _on_sgdb_search_activated(self, _entry):
+        self._do_sgdb_search()
+
+    def _do_sgdb_search(self):
+        self.match = None
+        self.create_button.set_sensitive(False)
+        self._clear_results()
+        self._reset_artwork_panel()
+
+        term = self.sgdb_search_entry.get_text().strip()
+        if not term:
+            self._set_busy(False, "")
+            return
+        self._run_sgdb_search(term, None)
+
+    def _run_sgdb_search(self, term, sgdb_id):
         self._set_busy(True, "Searching SteamGridDB...")
 
         def work():
             try:
-                if resolved.sgdb_id is not None:
-                    matches = [sgdb.get_game(resolved.sgdb_id)]
-                else:
-                    matches = sgdb.search(resolved.name)
+                matches = [sgdb.get_game(sgdb_id)] if sgdb_id is not None else sgdb.search(term)
             except Exception as e:
                 GLib.idle_add(self._search_failed, str(e))
                 return
