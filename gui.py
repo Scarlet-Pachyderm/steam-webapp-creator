@@ -5,6 +5,7 @@ github.com/unrud/video-downloader -- single window, no bells and
 whistles. First run shows a 3-step onboarding check (Steam, Edge,
 SGDB key) before the main window.
 """
+import concurrent.futures
 import re
 import subprocess
 import threading
@@ -98,6 +99,13 @@ _ARTWORK_ROW_SPACING = 4
 _ARTWORK_PANEL_OVERHEAD = 460 + 40 + 16 + 24
 _RESULTS_ROW_HEIGHT_ESTIMATE = 46
 _RESULTS_LIST_CHROME_OVERHEAD = 260
+
+# Thumbnail downloads no longer go through a per-image raw Thread --
+# with the candidate-list cap removed, a popular title's dozens of
+# results would otherwise fire off that many simultaneous connections
+# at once. Shared across all categories/searches so total concurrency
+# stays bounded regardless of how many rows are loading at the same time.
+_THUMBNAIL_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=6, thread_name_prefix="gridge-thumb")
 
 
 def _install_status_css():
@@ -922,7 +930,17 @@ class MainWindow(Adw.ApplicationWindow):
         self.artwork_rows = {}
         for basename, title, cell_w, cell_h in ARTWORK_CATEGORIES:
             section = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-            section.append(Gtk.Label(label=title, halign=Gtk.Align.START, css_classes=["heading"]))
+            title_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            title_box.append(Gtk.Label(label=title, halign=Gtk.Align.START, css_classes=["heading"]))
+            # Spins while this category still has candidates or
+            # thumbnails outstanding -- with no cap on candidate count
+            # and thumbnails now loading through a bounded queue instead
+            # of all at once, there's no other visible cue that a row
+            # with e.g. 28 results isn't just done after the first
+            # handful appear.
+            spinner = Gtk.Spinner(visible=False)
+            title_box.append(spinner)
+            section.append(title_box)
 
             row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=_ARTWORK_ROW_SPACING)
             # AUTOMATIC (not NEVER) so scrolling only engages once real
@@ -945,14 +963,24 @@ class MainWindow(Adw.ApplicationWindow):
             # real value is set by _refresh_for_window_size() once the
             # window's actual live width is known, and kept in sync as
             # it's resized/maximized afterward.
-            self.artwork_rows[basename] = {"box": row_box, "cell_w": cell_w, "cell_h": cell_h, "visible_count": 1}
+            self.artwork_rows[basename] = {
+                "box": row_box,
+                "cell_w": cell_w,
+                "cell_h": cell_h,
+                "visible_count": 1,
+                "spinner": spinner,
+            }
 
         return panel
 
     def _reset_artwork_panel(self):
         self.artwork_candidates = {basename: [] for basename, *_ in ARTWORK_CATEGORIES}
         self.artwork_selected = {basename: None for basename, *_ in ARTWORK_CATEGORIES}
+        self.artwork_pending = {basename: 0 for basename, *_ in ARTWORK_CATEGORIES}
         for basename, *_ in ARTWORK_CATEGORIES:
+            spinner = self.artwork_rows[basename]["spinner"]
+            spinner.stop()
+            spinner.set_visible(False)
             self._render_artwork_row(basename)
 
     def _render_artwork_row(self, basename):
@@ -1028,7 +1056,7 @@ class MainWindow(Adw.ApplicationWindow):
         button = Gtk.Button(child=overlay, css_classes=["flat", "artwork-button"])
         button.connect("clicked", self._on_artwork_clicked, basename, candidate, overlay, check)
 
-        self._load_thumbnail_async(candidate["thumb"], picture)
+        self._load_thumbnail_async(basename, candidate["thumb"], picture)
         return button
 
     def _on_artwork_clicked(self, _button, basename, candidate, overlay, check):
@@ -1049,7 +1077,7 @@ class MainWindow(Adw.ApplicationWindow):
         check.set_visible(True)
         self.artwork_selected[basename] = candidate
 
-    def _load_thumbnail_async(self, url, picture):
+    def _load_thumbnail_async(self, basename, url, picture):
         # A window resize re-renders every row from scratch (see
         # _refresh_for_window_size), which would otherwise re-download
         # every already-loaded thumbnail each time -- caching by URL
@@ -1057,6 +1085,7 @@ class MainWindow(Adw.ApplicationWindow):
         cached = self._thumbnail_cache.get(url)
         if cached is not None:
             picture.set_paintable(cached)
+            self._thumbnail_done(basename)
             return
 
         def work():
@@ -1065,18 +1094,29 @@ class MainWindow(Adw.ApplicationWindow):
                 with urllib.request.urlopen(req, timeout=15) as resp:
                     data = resp.read()
             except Exception:
-                return
-            GLib.idle_add(self._set_thumbnail, url, picture, data)
+                data = None
+            GLib.idle_add(self._thumbnail_loaded, basename, url, picture, data)
 
-        threading.Thread(target=work, daemon=True).start()
+        # Submitted to the shared bounded executor, not a raw Thread --
+        # see _THUMBNAIL_EXECUTOR's comment for why.
+        _THUMBNAIL_EXECUTOR.submit(work)
 
-    def _set_thumbnail(self, url, picture, data):
-        try:
-            texture = Gdk.Texture.new_from_bytes(GLib.Bytes.new(data))
-        except GLib.Error:
-            return
-        self._thumbnail_cache[url] = texture
-        picture.set_paintable(texture)
+    def _thumbnail_loaded(self, basename, url, picture, data):
+        if data is not None:
+            try:
+                texture = Gdk.Texture.new_from_bytes(GLib.Bytes.new(data))
+                self._thumbnail_cache[url] = texture
+                picture.set_paintable(texture)
+            except GLib.Error:
+                pass
+        self._thumbnail_done(basename)
+
+    def _thumbnail_done(self, basename):
+        self.artwork_pending[basename] = max(0, self.artwork_pending.get(basename, 0) - 1)
+        if self.artwork_pending[basename] == 0:
+            spinner = self.artwork_rows[basename]["spinner"]
+            spinner.stop()
+            spinner.set_visible(False)
 
     def _fetch_artwork(self, match):
         self._reset_artwork_panel()
@@ -1097,6 +1137,10 @@ class MainWindow(Adw.ApplicationWindow):
         # queued behind earlier categories' round-trips. Each fetch now
         # starts as early as possible instead of waiting its turn.
         for basename, fetch in fetchers.items():
+            spinner = self.artwork_rows[basename]["spinner"]
+            spinner.set_visible(True)
+            spinner.start()
+
             def work(basename=basename, fetch=fetch):
                 try:
                     candidates = fetch(game_id)
@@ -1112,6 +1156,11 @@ class MainWindow(Adw.ApplicationWindow):
         # result instead of populating the wrong row.
         if self.match is not match:
             return
+        self.artwork_pending[basename] = len(candidates)
+        if not candidates:
+            spinner = self.artwork_rows[basename]["spinner"]
+            spinner.stop()
+            spinner.set_visible(False)
         self.artwork_candidates[basename] = candidates
         self._render_artwork_row(basename)
 

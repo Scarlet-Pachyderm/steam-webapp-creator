@@ -127,36 +127,35 @@ def get_icon(game_id):
 # Candidate-list variants for the artwork picker -- each SGDB entry
 # already carries both "url" (full-res) and "thumb" (small preview), so
 # the picker can load thumbnails cheaply and only download the full
-# image for whatever the user actually selects. Capped per category:
-# SGDB can return dozens for a popular game, and a bounded set keeps
-# the picker's upfront thumbnail downloads reasonable. 24 (not the
-# original 10) -- confirmed Humor-tagged entries get sorted near the
-# end of the list (e.g. Microsoft Edge's vertical grids: 24 total,
-# humor ones start at index 20), so a low cap silently excluded them
-# even after requesting humor=any.
-CANDIDATE_LIMIT = 24
+# image for whatever the user actually selects. No cap on how many
+# come back: a fixed limit silently excluded real results for popular
+# titles (confirmed: Netflix alone has 28 vertical grids, more than
+# even a generous cap), and the picker now throttles concurrent
+# thumbnail *downloads* instead of truncating the candidate list
+# itself, so showing everything no longer means firing off unbounded
+# simultaneous requests.
 
 
 def get_vertical_grid_candidates(game_id):
-    return _get(f"/grids/game/{game_id}", {"dimensions": VERTICAL_DIMENSIONS, **INCLUDE_HUMOR})[:CANDIDATE_LIMIT]
+    return _get(f"/grids/game/{game_id}", {"dimensions": VERTICAL_DIMENSIONS, **INCLUDE_HUMOR})
 
 
 def get_horizontal_grid_candidates(game_id):
-    return _get(f"/grids/game/{game_id}", {"dimensions": HORIZONTAL_DIMENSIONS, **INCLUDE_HUMOR})[:CANDIDATE_LIMIT]
+    return _get(f"/grids/game/{game_id}", {"dimensions": HORIZONTAL_DIMENSIONS, **INCLUDE_HUMOR})
 
 
 def get_hero_candidates(game_id):
-    return _get(f"/heroes/game/{game_id}", INCLUDE_HUMOR)[:CANDIDATE_LIMIT]
+    return _get(f"/heroes/game/{game_id}", INCLUDE_HUMOR)
 
 
 def get_logo_candidates(game_id):
-    return _get(f"/logos/game/{game_id}", INCLUDE_HUMOR)[:CANDIDATE_LIMIT]
+    return _get(f"/logos/game/{game_id}", INCLUDE_HUMOR)
 
 
 def get_icon_candidates(game_id):
     # Same .png-over-.ico preference as get_icon(), just applied across
-    # the whole capped list instead of picking just one.
-    icons = _get(f"/icons/game/{game_id}", INCLUDE_HUMOR)[:CANDIDATE_LIMIT]
+    # the whole list instead of picking just one.
+    icons = _get(f"/icons/game/{game_id}", INCLUDE_HUMOR)
     return sorted(icons, key=lambda i: not i["url"].lower().endswith(".png"))
 
 
