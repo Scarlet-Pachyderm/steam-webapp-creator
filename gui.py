@@ -117,6 +117,16 @@ def guess_name_from_url(url):
     return base.replace("-", " ").title()
 
 
+def _is_plain_youtube(resolved):
+    """True only for the main youtube.com site -- not tv.youtube.com
+    (the separate paid live-TV service) or a youtu.be video link, since
+    the TV/leanback interface swap only makes sense for browsing the
+    regular site."""
+    if not resolved.url:
+        return False
+    return urlparse(resolved.url).netloc.removeprefix("www.") == "youtube.com"
+
+
 def _looks_like_url(text):
     candidate = text if "://" in text else f"https://{text}"
     host = urlparse(candidate).netloc
@@ -722,8 +732,14 @@ class MainWindow(Adw.ApplicationWindow):
         clear_button.add_css_class("flat")
         clear_button.connect("clicked", self._on_clear_url)
         self.url_entry.add_suffix(clear_button)
+        self.couch_mode_row = Adw.SwitchRow(
+            title="Couch mode",
+            subtitle="Use YouTube's TV interface -- easier to navigate with a controller",
+            visible=False,
+        )
         entries_group = Adw.PreferencesGroup()
         entries_group.add(self.url_entry)
+        entries_group.add(self.couch_mode_row)
         content.append(entries_group)
 
         self.url_hint = Gtk.Label(wrap=True, halign=Gtk.Align.START, margin_start=6)
@@ -793,14 +809,22 @@ class MainWindow(Adw.ApplicationWindow):
         self.pending_label = Gtk.Label(wrap=True, css_classes=["dim-label"])
         content.append(self.pending_label)
 
-        self.controller_tip_box = Gtk.Box(
-            orientation=Gtk.Orientation.HORIZONTAL, spacing=6, halign=Gtk.Align.CENTER, visible=False
+        self.controller_tip_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6, visible=False)
+        self.controller_tip_box.append(
+            Gtk.Image(icon_name="dialog-information-symbolic", valign=Gtk.Align.START, margin_top=2)
         )
-        self.controller_tip_box.append(Gtk.Image(icon_name="dialog-information-symbolic"))
         self.controller_tip_box.append(
             Gtk.Label(
                 label='Remember to set Steam Input layout to "Web Browser" (or your preferred one) for each shortcut',
                 wrap=True,
+                # max_width_chars=1 makes Pango wrap to whatever width it's
+                # actually given instead of sizing to the unwrapped text --
+                # without it, this Box's natural width request stretches
+                # the fixed 460px left column wider to fit the text on one
+                # line (same class of hexpand fight noted above for content).
+                max_width_chars=1,
+                hexpand=True,
+                xalign=0,
                 css_classes=["dim-label"],
             )
         )
@@ -1132,6 +1156,10 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _update_url_hint(self):
         resolved = resolve_url_input(self.url_entry.get_text())
+        is_youtube = _is_plain_youtube(resolved)
+        self.couch_mode_row.set_visible(is_youtube)
+        if not is_youtube:
+            self.couch_mode_row.set_active(False)
         if resolved.warning:
             self.url_hint.set_markup(
                 f'<span foreground="#e5a50a">{GLib.markup_escape_text(resolved.warning)}</span>'
@@ -1294,6 +1322,7 @@ class MainWindow(Adw.ApplicationWindow):
         # fallback to auto-picking SGDB's first result now that there's
         # a picker for it.
         selections = dict(self.artwork_selected)
+        couch_mode = self.couch_mode_row.get_visible() and self.couch_mode_row.get_active()
         self._set_busy(True, f"Creating shortcut for {name}...")
 
         def work():
@@ -1302,7 +1331,7 @@ class MainWindow(Adw.ApplicationWindow):
                 if match and any(selections.values()):
                     slug = cw.slugify(match["name"])
                     paths = cw.download_selected_assets(slug, selections)
-                appid = cw.register_steam_shortcut(name, url, paths)
+                appid = cw.register_steam_shortcut(name, url, paths, couch_mode=couch_mode)
                 GLib.idle_add(self._create_done, name, appid)
             except (steam_paths.SteamNotFoundError, edge_launcher.EdgeNotFoundError, sgdb.SGDBError) as e:
                 GLib.idle_add(self._create_failed, str(e))

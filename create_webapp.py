@@ -281,9 +281,27 @@ GRID_FILENAMES = {
 }
 
 
-def register_steam_shortcut(name, url, asset_paths, user_id=None):
+# Google gates youtube.com/tv's D-pad-friendly "leanback" interface to
+# requests that look like they're coming from a TV/console app, redirecting
+# regular desktop browsers back to the normal site. Spoofing Edge's whole
+# user-agent works because each shortcut gets its own dedicated Edge
+# instance anyway -- there's no other traffic in that process that a
+# TV-flavored UA could mess up. UA string matches the one used by
+# github.com/angeloanan/youtube-tv-browser, a maintained extension doing
+# the same spoof.
+YOUTUBE_TV_URL = "https://www.youtube.com/tv"
+YOUTUBE_TV_USER_AGENT = (
+    "Mozilla/5.0 (SMART-TV; LINUX; Tizen 7.0) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) 94.0.4606.31/7.0 TV Safari/537.36"
+)
+
+
+def register_steam_shortcut(name, url, asset_paths, user_id=None, couch_mode=False):
     """Copy fetched assets into Steam's grid folder and add/update a
     non-Steam shortcut entry in shortcuts.vdf. Returns the appid."""
+    if couch_mode:
+        url = YOUTUBE_TV_URL
+
     edge_exe, edge_prefix_args = edge_launcher.find_edge()
 
     userdata_dir = steam_paths.find_userdata_dir(user_id)
@@ -318,6 +336,8 @@ def register_steam_shortcut(name, url, asset_paths, user_id=None):
         "--no-first-run",
         "--no-default-browser-check",
     ]
+    if couch_mode:
+        edge_args.append(f"--user-agent={YOUTUBE_TV_USER_AGENT}")
 
     vdf_path = os.path.join(userdata_dir, "config", "shortcuts.vdf")
     written_appid, stale_appids = shortcuts_vdf.add_shortcut(
