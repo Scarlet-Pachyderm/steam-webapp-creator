@@ -1053,14 +1053,27 @@ class MainWindow(Adw.ApplicationWindow):
         # Letterboxing inside the same fixed size keeps every cell
         # (real or skeleton) identically sized either way.
         #
-        # Same explicit hexpand/vexpand=False as _make_skeleton_cell, for
-        # the same reason -- applied at every level (Picture, Overlay,
-        # Button) since any one of them left unset was enough to let the
-        # cell grow past its fixed size on a tall/4K window.
-        picture = Gtk.Picture(
-            content_fit=Gtk.ContentFit.CONTAIN,
+        # width_request/height_request are only a *minimum* -- they don't
+        # cap a widget's own natural size. hexpand/vexpand=False (added
+        # previously) stops a cell from stretching to fill *leftover*
+        # parent space, but a real image's aspect ratio can still make
+        # Picture's own natural size, under CONTAIN, come out taller than
+        # the declared height -- confirmed: rows with real artwork came
+        # out taller than the all-skeleton row, and each row's extra
+        # height stacked up, pushing every category title further down
+        # the more rows above it had real results.
+        #
+        # A ScrolledWindow with propagate_natural_width/height left at
+        # their GTK4 default (False) never lets its child's natural size
+        # influence its own reported size at all, regardless of content
+        # -- a hard clip instead of a request that's only ever a floor.
+        picture = Gtk.Picture(content_fit=Gtk.ContentFit.CONTAIN, hexpand=True, vexpand=True)
+        clip = Gtk.ScrolledWindow(
+            child=picture,
             width_request=w,
             height_request=h,
+            hscrollbar_policy=Gtk.PolicyType.NEVER,
+            vscrollbar_policy=Gtk.PolicyType.NEVER,
             hexpand=False,
             vexpand=False,
         )
@@ -1071,7 +1084,7 @@ class MainWindow(Adw.ApplicationWindow):
         # nearly invisible against the app background).
         cell_classes = ["artwork-cell", "artwork-skeleton"] + (["selected"] if selected else [])
         overlay = Gtk.Overlay(
-            child=picture,
+            child=clip,
             css_classes=cell_classes,
             hexpand=False,
             vexpand=False,
