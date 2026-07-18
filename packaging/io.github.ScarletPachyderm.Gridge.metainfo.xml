@@ -18,6 +18,13 @@
   <url type="bugtracker">https://github.com/Scarlet-Pachyderm/Gridge/issues</url>
   <developer_name>Scarlet-Pachyderm</developer_name>
   <releases>
+    <release version="1.1.2" date="2026-07-18">
+      <description>
+        <ul>
+          <li>Fix the app icon showing a solid green square background on KDE-based desktops (e.g. Steam Deck Desktop Mode)</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.1.1" date="2026-07-18">
       <description>
         <ul>
