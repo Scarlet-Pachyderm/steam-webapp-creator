@@ -279,6 +279,14 @@ class OnboardingWindow(Adw.ApplicationWindow):
         super().__init__(application=app, title=f"Set Up {APP_NAME}")
         self.set_default_size(700, -1)
         self.on_complete = on_complete
+        # Guards against handing off twice -- the manual Continue button
+        # and the background auto-advance poll are two independent event
+        # sources that can both fire _on_continue right around the same
+        # moment (e.g. the user clicks Continue the instant it becomes
+        # sensitive, exactly when a poll tick also completes), each
+        # unconditionally opening its own MainWindow. Confirmed on real
+        # hardware: two main windows opened after onboarding.
+        self._advanced = False
         # Auto-close and hand off the moment all 3 requirements become
         # met via the background poll (e.g. right after a real Steam
         # login completes) -- but only for the "requirements weren't
@@ -682,10 +690,15 @@ class OnboardingWindow(Adw.ApplicationWindow):
         dialog.present(self)
 
     def _on_import_dialog_response(self, _dialog, _response):
-        self.close()
-        self.on_complete(self.imported_count)
+        self._advance_to_main()
 
     def _on_continue(self, _button):
+        self._advance_to_main()
+
+    def _advance_to_main(self):
+        if self._advanced:
+            return
+        self._advanced = True
         self.close()
         self.on_complete(self.imported_count)
 
