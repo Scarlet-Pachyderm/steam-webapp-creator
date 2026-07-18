@@ -18,6 +18,15 @@
   <url type="bugtracker">https://github.com/Scarlet-Pachyderm/Gridge/issues</url>
   <developer_name>Scarlet-Pachyderm</developer_name>
   <releases>
+    <release version="1.1.1" date="2026-07-18">
+      <description>
+        <ul>
+          <li>Add the real Gridge app icon (scalable SVG) and a proper README header</li>
+          <li>Fix onboarding sometimes opening two duplicate main windows</li>
+          <li>Fix the dock/taskbar icon disappearing after onboarding completes</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.1.0" date="2026-07-11">
       <description>
         <ul>
