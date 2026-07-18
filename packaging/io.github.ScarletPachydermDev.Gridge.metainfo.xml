@@ -28,6 +28,14 @@
   <url type="bugtracker">https://github.com/ScarletPachydermDev/Gridge/issues</url>
   <developer_name>ScarletPachydermDev</developer_name>
   <releases>
+    <release version="1.2.0" date="2026-07-18">
+      <description>
+        <ul>
+          <li>App ID changed to io.github.ScarletPachydermDev.Gridge (was io.github.ScarletPachyderm.Gridge) -- the project moved from the Scarlet-Pachyderm org to the ScarletPachydermDev account it was originally meant to represent. Existing installs need a full uninstall/reinstall under the new ID.</li>
+          <li>Narrow Flatpak permissions in preparation for a Flathub submission: drop the broad home-directory filesystem grant, request shared memory (ipc) alongside the X11 fallback socket</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.1.2" date="2026-07-18">
       <description>
         <ul>
