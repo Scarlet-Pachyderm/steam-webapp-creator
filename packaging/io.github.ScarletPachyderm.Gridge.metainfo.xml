@@ -14,6 +14,16 @@
     </p>
   </description>
   <launchable type="desktop-id">io.github.ScarletPachyderm.Gridge.desktop</launchable>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Picking artwork and creating a Steam shortcut</caption>
+      <image>https://raw.githubusercontent.com/Scarlet-Pachyderm/Gridge/main/screenshots/main2.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>First-run setup</caption>
+      <image>https://raw.githubusercontent.com/Scarlet-Pachyderm/Gridge/main/screenshots/setup.png</image>
+    </screenshot>
+  </screenshots>
   <url type="homepage">https://github.com/Scarlet-Pachyderm/Gridge</url>
   <url type="bugtracker">https://github.com/Scarlet-Pachyderm/Gridge/issues</url>
   <developer_name>Scarlet-Pachyderm</developer_name>
