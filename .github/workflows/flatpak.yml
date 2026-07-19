@@ -78,7 +78,8 @@ jobs:
 
       - name: Publish the updated repo to GitHub Pages
         run: |
-          rsync -a --delete built-repo/ gh-pages/repo/
+          rm -rf gh-pages/repo
+          cp -a built-repo gh-pages/repo
           cd gh-pages
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
