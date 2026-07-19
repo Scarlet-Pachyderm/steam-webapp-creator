@@ -45,9 +45,21 @@ This isn't a hypothetical edge case -- plenty of mainstream streaming catalogs u
 
 Edge shares one profile across every shortcut Gridge creates, so logins, addons and saved sessions from one streaming service carry over to the others automatically -- you only sign in once per service, not once per shortcut.
 
+## Installing
+
+Gridge isn't on Flathub, but self-hosts its own Flatpak repo with real auto-updates -- install with one command:
+
+```
+flatpak remote-add --user --if-not-exists gridge https://raw.githubusercontent.com/ScarletPachydermDev/Gridge/main/packaging/io.github.ScarletPachydermDev.Gridge.flatpakrepo && flatpak install --user gridge io.github.ScarletPachydermDev.Gridge
+```
+
+From then on `flatpak update` (or your desktop's automatic background updates, on by default on SteamOS and most GNOME/KDE-based distros) picks up new releases the same way a Flathub app would -- no manual reinstalling.
+
+Prefer a one-off install with no ongoing updates? Grab the `.flatpak` bundle from the [latest release](https://github.com/ScarletPachydermDev/Gridge/releases/latest) instead and `flatpak install gridge-*.flatpak`.
+
 ## Building from source
 
-Gridge ships as a Flatpak. To build it yourself:
+To build it yourself:
 
 ```
 flatpak install --user flathub org.gnome.Sdk//50 org.gnome.Platform//50 org.flatpak.Builder
